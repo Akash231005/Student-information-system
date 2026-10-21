@@ -1,0 +1,86 @@
+newman
+
+SIS — Functional API Verification
+
+→ 01 — Health endpoint
+  GET http://127.0.0.1:8000/health [200 OK, 154B, 25ms]
+  ✓  HTTP 200
+  ✓  health payload is ok
+  ✓  response is JSON
+
+→ 02 — Course search responds
+  GET http://127.0.0.1:8000/courses?limit=10 [200 OK, 886B, 18ms]
+  ✓  HTTP 200
+  ✓  course search returns an array
+
+→ 03 — Offerings endpoint responds
+  GET http://127.0.0.1:8000/offerings?limit=10 [200 OK, 2.18kB, 5ms]
+  ✓  HTTP 200
+  ✓  offerings returns an array
+
+→ 04 — Autocomplete and cache behaviour
+  GET http://127.0.0.1:8000/autocomplete?q=SYS&limit=8 [200 OK, 166B, 8ms]
+  ✓  HTTP 200
+  ✓  items array and cache state returned
+
+→ 05 — Unique ID generation
+  GET http://127.0.0.1:8000/system-design/ids?count=25 [200 OK, 799B, 3ms]
+  ✓  HTTP 200
+  ✓  25 unique IDs
+  ✓  generation metric is positive
+
+→ 06 — Consistent hash ring metadata
+  GET http://127.0.0.1:8000/system-design/ring [200 OK, 180B, 2ms]
+  ✓  HTTP 200
+  ✓  three or more nodes and virtual nodes
+
+→ 07 — Component metrics available
+  GET http://127.0.0.1:8000/system-design/metrics [200 OK, 838B, 4ms]
+  ✓  HTTP 200
+  ✓  required component metric groups exist
+
+→ 08 — Unauthenticated profile is rejected
+  GET http://127.0.0.1:8000/auth/me [401 Unauthorized, 183B, 4ms]
+  ✓  401 without bearer token
+
+→ 09 — Register synthetic test account
+  POST http://127.0.0.1:8000/auth/register [201 Created, 236B, 73ms]
+  ✓  new synthetic account created
+
+→ 10 — Login returns bearer token
+  POST http://127.0.0.1:8000/auth/login [200 OK, 301B, 57ms]
+  ✓  login succeeds
+
+→ 11 — Authenticated identity matches account
+  GET http://127.0.0.1:8000/auth/me [200 OK, 320B, 7ms]
+  ✓  authenticated identity returned
+  ✓  email matches generated test account
+  ✓  role is student
+
+→ 12 — Student cannot create staff-only course
+  POST http://127.0.0.1:8000/courses [403 Forbidden, 178B, 7ms]
+  ✓  student role forbidden from staff action
+
+→ 13 — Invalid credentials rejected
+  POST http://127.0.0.1:8000/auth/login [401 Unauthorized, 187B, 57ms]
+  ✓  invalid password rejected
+
+┌─────────────────────────┬──────────────────┬──────────────────┐
+│                         │         executed │           failed │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│              iterations │                1 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│                requests │               13 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│            test-scripts │               13 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│      prerequest-scripts │                1 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│              assertions │               24 │                0 │
+├─────────────────────────┴──────────────────┴──────────────────┤
+│ total run duration: 462ms                                     │
+├───────────────────────────────────────────────────────────────┤
+│ total data received: 4.76kB (approx)                          │
+├───────────────────────────────────────────────────────────────┤
+│ average response time: 20ms [min: 2ms, max: 73ms, s.d.: 23ms] │
+└───────────────────────────────────────────────────────────────┘

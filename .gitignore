@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local configuration and databases
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated temporary files
+*.log
+.DS_Store
+
+# External reference clone is documented, not vendored into the submission repo
+references/enrolli/
+
+# Node / frontend build output
+node_modules/
+dist/
+dist-ssr/
+
+# Raw load-test output is large; regenerate it with sis-app/docs/DEMO_RUNBOOK.md
+*.jtl
+
+# Derived archives (the sources, report and diagrams they were built from are tracked)
+SIS-System-Design-Submission.zip
+deliverables/*.zip
+
+# LaTeX intermediates (report-professional.tex is tracked)
+*.aux
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz

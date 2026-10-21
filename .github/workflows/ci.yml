@@ -1,0 +1,50 @@
+name: SIS checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sis_test
+          POSTGRES_USER: sis
+          POSTGRES_PASSWORD: sis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sis -d sis_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: sis-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: sis-app/frontend/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: sis-app/frontend
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra test --extra benchmark --extra dev
+      - run: uv run ruff check app tests scripts migrations
+      - run: uv run alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+psycopg://sis:sis_test@localhost:5432/sis_test
+      - run: uv run pytest -q
+        env:
+          DATABASE_URL: postgresql+psycopg://sis:sis_test@localhost:5432/sis_test
+          SIS_RATE_LIMIT_ENABLED: "false"

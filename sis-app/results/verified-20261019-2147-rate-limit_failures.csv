@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,GET /courses,HTTPError('429 Client Error: Too Many Requests for url: GET /courses'),164,2026-10-19T16:18:04Z,2026-10-19T16:18:15Z
+GET,GET /courses?q=synthetic,HTTPError('429 Client Error: Too Many Requests for url: GET /courses?q=synthetic'),79,2026-10-19T16:18:04Z,2026-10-19T16:18:15Z

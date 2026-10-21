@@ -1,0 +1,24 @@
+import { chromium } from 'playwright';
+import fs from 'node:fs';
+const out='/home/sujith/Documents/SIS-Karpathy-Map/deliverables/screenshots';
+fs.mkdirSync(out,{recursive:true});
+const browser=await chromium.launch({headless:true});
+const page=await browser.newPage({viewport:{width:1600,height:1100},deviceScaleFactor:1});
+const errors=[];
+page.on('pageerror',e=>errors.push(e.message));
+page.on('console',m=>{if(m.type()==='error') errors.push(m.text())});
+async function shot(name){await page.waitForTimeout(650); await page.screenshot({path:out+'/'+name,animations:'disabled'}); console.log('CAPTURE',name,'HEAD',await page.locator('main h1, main h2').first().innerText().catch(()=>'?'));}
+await page.goto('http://127.0.0.1:8000',{waitUntil:'networkidle'}); await page.waitForTimeout(1200);
+await page.getByRole('button',{name:'Overview',exact:true}).click(); await shot('00-overview-viewport.png');
+await page.getByRole('button',{name:'My account',exact:true}).click(); await page.waitForTimeout(500);
+await page.getByLabel('College email').fill('demo.student@example.test'); await page.getByLabel('Password').fill('DemoStudent-2026!Password');
+await page.getByRole('button',{name:'Sign in securely'}).click(); await page.waitForTimeout(800); await shot('02-account-desktop.png');
+await page.getByRole('button',{name:'Course catalogue',exact:true}).click(); await page.waitForTimeout(600); await shot('02-courses-desktop.png');
+await page.getByRole('button',{name:'My enrollment',exact:true}).click(); await page.waitForTimeout(600); await shot('02-enrollment-desktop.png');
+await page.locator('main select').first().selectOption('1'); await page.getByRole('button',{name:/Confirm enrollment/}).click(); await page.waitForTimeout(900); await shot('03-enrollment-confirmed.png');
+await page.getByRole('button',{name:'Academic records',exact:true}).click(); await page.waitForTimeout(600); await page.getByRole('button',{name:'Load grades'}).click(); await page.waitForTimeout(700); await shot('04-academic-records.png');
+await page.getByRole('button',{name:'System observability',exact:true}).click(); await page.waitForTimeout(600); await page.getByRole('button',{name:'Inspect metrics'}).click().catch(()=>{}); await page.waitForTimeout(500); await shot('06-system-observability.png');
+await page.setViewportSize({width:390,height:844}); await page.getByRole('button',{name:'Toggle menu'}).click({force:true}); await page.waitForTimeout(250); await page.screenshot({path:out+'/09-mobile-navigation.png',animations:'disabled'});
+await page.getByRole('button',{name:'Overview',exact:true}).click({force:true}); await page.waitForTimeout(600); await page.screenshot({path:out+'/08-overview-mobile.png',animations:'disabled'});
+console.log('BROWSER_ERRORS',JSON.stringify(errors));
+await browser.close();

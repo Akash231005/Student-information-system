@@ -1,0 +1,5 @@
+API PID=589270
+Apache JMeter 5.6.3
+Postman Desktop 12.33.2
+Newman 6.2.3
+API host 127.0.0.1:8000; PostgreSQL container sis-postgres; 10 threads, 2 s ramp, 20 s, 1 s think time

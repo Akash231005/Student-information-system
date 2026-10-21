@@ -1,0 +1,384 @@
+{
+  "info": {
+    "_postman_id": "9c137b1e-4ef1-4e51-9df0-4b7713a9b351",
+    "name": "SIS \u2014 Functional API Verification",
+    "description": "Coursework verification against the local SIS API. Uses synthetic data only. Registration creates one synthetic account in the configured development database.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "studentNumber",
+      "value": "POSTMAN-{{$timestamp}}"
+    },
+    {
+      "key": "fullName",
+      "value": "Postman Verification Student"
+    },
+    {
+      "key": "email",
+      "value": "postman-{{$timestamp}}@example.test"
+    },
+    {
+      "key": "password",
+      "value": "Coursework-Test-Password-2026"
+    },
+    {
+      "key": "studentId",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "01 \u2014 Health endpoint",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('health payload is ok', () => pm.expect(pm.response.json().status).to.eql('ok'));",
+              "pm.test('response is JSON', () => pm.response.to.be.json);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "02 \u2014 Course search responds",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('course search returns an array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/courses?limit=10"
+      }
+    },
+    {
+      "name": "03 \u2014 Offerings endpoint responds",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('offerings returns an array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/offerings?limit=10"
+      }
+    },
+    {
+      "name": "04 \u2014 Autocomplete and cache behaviour",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('items array and cache state returned', () => { const j=pm.response.json(); pm.expect(j.items).to.be.an('array'); pm.expect(['HIT','MISS','DISABLED']).to.include(j.cache); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/autocomplete?q=SYS&limit=8"
+      }
+    },
+    {
+      "name": "05 \u2014 Unique ID generation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('25 unique IDs', () => { const j=pm.response.json(); pm.expect(j.count).to.eql(25); pm.expect(j.unique_in_batch).to.eql(true); pm.expect(new Set(j.ids).size).to.eql(25); });",
+              "pm.test('generation metric is positive', () => pm.expect(pm.response.json().ids_per_second).to.be.above(0));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/system-design/ids?count=25"
+      }
+    },
+    {
+      "name": "06 \u2014 Consistent hash ring metadata",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('three or more nodes and virtual nodes', () => { const j=pm.response.json(); pm.expect(j.nodes).to.be.at.least(1); pm.expect(j.virtual_nodes_per_shard).to.be.above(0); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/system-design/ring"
+      }
+    },
+    {
+      "name": "07 \u2014 Component metrics available",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('required component metric groups exist', () => { const j=pm.response.json(); ['rate_limiter','key_value_store','consistent_hashing','id_generator','url_shortener','crawler'].forEach(k=>pm.expect(j).to.have.property(k)); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/system-design/metrics"
+      }
+    },
+    {
+      "name": "08 \u2014 Unauthenticated profile is rejected",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('401 without bearer token', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/auth/me"
+      }
+    },
+    {
+      "name": "09 \u2014 Register synthetic test account",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const t=Date.now(); pm.collectionVariables.set('studentNumber','POSTMAN-'+t); pm.collectionVariables.set('email','postman-'+t+'@example.test');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('new synthetic account created', () => pm.response.to.have.status(201));",
+              "const j=pm.response.json(); pm.expect(j.student_id).to.be.a('number'); pm.collectionVariables.set('studentId',String(j.student_id));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/register",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"student_number\": \"{{studentNumber}}\",\n  \"full_name\": \"{{fullName}}\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "10 \u2014 Login returns bearer token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('login succeeds', () => pm.response.to.have.status(200));",
+              "const j=pm.response.json(); pm.expect(j.access_token).to.be.a('string').and.not.empty; pm.collectionVariables.set('token',j.access_token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "11 \u2014 Authenticated identity matches account",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('authenticated identity returned', () => pm.response.to.have.status(200));",
+              "const j=pm.response.json(); pm.test('email matches generated test account', () => pm.expect(j.email).to.eql(pm.collectionVariables.get('email'))); pm.test('role is student', () => pm.expect(j.role).to.eql('STUDENT'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/auth/me",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{token}}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "12 \u2014 Student cannot create staff-only course",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('student role forbidden from staff action', () => pm.response.to.have.status(403));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/courses",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"course_code\": \"POSTMAN-FORBIDDEN\",\n  \"title\": \"Must Not Be Created\",\n  \"credits\": 3\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{token}}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "13 \u2014 Invalid credentials rejected",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('invalid password rejected', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"definitely-wrong-password\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

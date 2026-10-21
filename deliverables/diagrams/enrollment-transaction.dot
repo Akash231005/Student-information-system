@@ -1,0 +1,21 @@
+digraph G {
+ graph [rankdir=LR, bgcolor="white", pad="0.25", nodesep="0.42", ranksep="0.48", splines=ortho, fontname="DejaVu Sans", fontsize=18, labelloc=t, label="ENROLLMENT  |  TRANSACTIONAL DECISION PATH\n"];
+ node [shape=box, style="rounded,filled", color="#CBD5DF", fillcolor="#F7F9FC", fontname="DejaVu Sans", fontsize=10, fontcolor="#15283B", margin="0.17,0.13", penwidth=1.2];
+ edge [fontname="DejaVu Sans", fontsize=9, color="#526A80", fontcolor="#3C5368", arrowsize=.75, penwidth=1.25];
+ request [label="POST /offerings/{id}/enroll\nAuthenticated student", fillcolor="#EAF2FF", color="#8AAFE6"];
+ guard [label="Validate offering, identity\nand request semantics"];
+ reserve [label="Conditional UPDATE\nstatus = OPEN AND\nenrolled_count < capacity", fillcolor="#DDF4EF", color="#5DAFA3", penwidth=1.6];
+ reserved [shape=diamond, label="One row\nupdated?", fillcolor="#FFF4E8", color="#E4B77C", margin="0.12,0.08"];
+ insert [label="INSERT enrollment\ninside same transaction", fillcolor="#DDF4EF", color="#5DAFA3"];
+ unique [shape=diamond, label="Unique constraint\npasses?", fillcolor="#FFF4E8", color="#E4B77C", margin="0.12,0.08"];
+ commit [label="COMMIT\n201 Created", fillcolor="#DDF4EF", color="#5DAFA3", penwidth=1.6];
+ conflict [label="ROLLBACK / no seat consumed\n409 Conflict", fillcolor="#FCE9E7", color="#D58B83"];
+ request -> guard -> reserve -> reserved;
+ reserved -> insert [label="yes"];
+ reserved -> conflict [label="no"];
+ insert -> unique;
+ unique -> commit [label="yes"];
+ unique -> conflict [label="no"];
+ note [shape=note, label="Invariant after every committed request:\n0 ≤ enrolled_count ≤ capacity\n\nA preflight read is advisory; the conditional\ndatabase write is the authoritative decision.", fillcolor="#FFF9E9", color="#D8B96E", fontsize=10];
+ {rank=same; commit; note;} commit -> note [style=invis];
+}

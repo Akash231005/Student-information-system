@@ -1,0 +1,2624 @@
+{
+  "collection": {
+    "_": {
+      "postman_id": "9c137b1e-4ef1-4e51-9df0-4b7713a9b351"
+    },
+    "item": [
+      {
+        "id": "c681b8d1-03a1-41a1-8203-1d32ad42cfb1",
+        "name": "01 — Health endpoint",
+        "request": {
+          "url": {
+            "path": [
+              "health"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "method": "GET"
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "a14f83b9-ff5a-40f6-9a99-52cf8d53cd4a",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                "pm.test('health payload is ok', () => pm.expect(pm.response.json().status).to.eql('ok'));",
+                "pm.test('response is JSON', () => pm.response.to.be.json);"
+              ],
+              "_lastExecutionId": "11990edc-48e0-4b54-b862-fcf3df69424a"
+            }
+          }
+        ]
+      },
+      {
+        "id": "5469f0e0-1be5-449f-9324-14b215072d6b",
+        "name": "02 — Course search responds",
+        "request": {
+          "url": {
+            "path": [
+              "courses"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [
+              {
+                "key": "limit",
+                "value": "10"
+              }
+            ],
+            "variable": []
+          },
+          "method": "GET"
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "96d42a52-c3c5-46a3-90a7-05966d4bccff",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                "pm.test('course search returns an array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+              ],
+              "_lastExecutionId": "45a24d69-f34d-424d-828d-ce4cd9874ca9"
+            }
+          }
+        ]
+      },
+      {
+        "id": "44fde6b0-08ae-4ed9-b248-ade2fca01017",
+        "name": "03 — Offerings endpoint responds",
+        "request": {
+          "url": {
+            "path": [
+              "offerings"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [
+              {
+                "key": "limit",
+                "value": "10"
+              }
+            ],
+            "variable": []
+          },
+          "method": "GET"
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "fa7f660d-d6ae-451c-bc60-834a69a3a399",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                "pm.test('offerings returns an array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+              ],
+              "_lastExecutionId": "504c2b24-9ba0-42f2-a87b-9e91d36cd38b"
+            }
+          }
+        ]
+      },
+      {
+        "id": "04d7ef38-1922-441d-88f8-9ba0c46837f9",
+        "name": "04 — Autocomplete and cache behaviour",
+        "request": {
+          "url": {
+            "path": [
+              "autocomplete"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [
+              {
+                "key": "q",
+                "value": "SYS"
+              },
+              {
+                "key": "limit",
+                "value": "8"
+              }
+            ],
+            "variable": []
+          },
+          "method": "GET"
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "b950056d-d1fd-4f76-a821-96b691e300d1",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                "pm.test('items array and cache state returned', () => { const j=pm.response.json(); pm.expect(j.items).to.be.an('array'); pm.expect(['HIT','MISS','DISABLED']).to.include(j.cache); });"
+              ],
+              "_lastExecutionId": "ef7f4aa0-8ff8-430a-9617-99780404c015"
+            }
+          }
+        ]
+      },
+      {
+        "id": "baac415f-3f9b-41f7-880b-2064da1d03ad",
+        "name": "05 — Unique ID generation",
+        "request": {
+          "url": {
+            "path": [
+              "system-design",
+              "ids"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [
+              {
+                "key": "count",
+                "value": "25"
+              }
+            ],
+            "variable": []
+          },
+          "method": "GET"
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "4c3be9ab-bb9b-422a-86f8-28e5b176cb6f",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                "pm.test('25 unique IDs', () => { const j=pm.response.json(); pm.expect(j.count).to.eql(25); pm.expect(j.unique_in_batch).to.eql(true); pm.expect(new Set(j.ids).size).to.eql(25); });",
+                "pm.test('generation metric is positive', () => pm.expect(pm.response.json().ids_per_second).to.be.above(0));"
+              ],
+              "_lastExecutionId": "856ee1b2-ca1d-4411-b1f4-27046b217a22"
+            }
+          }
+        ]
+      },
+      {
+        "id": "2d1a2b80-d735-4d4a-9644-6e12134cf08c",
+        "name": "06 — Consistent hash ring metadata",
+        "request": {
+          "url": {
+            "path": [
+              "system-design",
+              "ring"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "method": "GET"
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "ddb796cd-4b07-4285-87fe-c718a651d216",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                "pm.test('three or more nodes and virtual nodes', () => { const j=pm.response.json(); pm.expect(j.nodes).to.be.at.least(1); pm.expect(j.virtual_nodes_per_shard).to.be.above(0); });"
+              ],
+              "_lastExecutionId": "dad5ea7c-9ef5-4648-a2f4-07e57fb8e02c"
+            }
+          }
+        ]
+      },
+      {
+        "id": "b4c08882-fb37-4437-9d1a-df48a5e198e4",
+        "name": "07 — Component metrics available",
+        "request": {
+          "url": {
+            "path": [
+              "system-design",
+              "metrics"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "method": "GET"
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "b85abb63-d0ee-4982-83e6-f92cbec824cd",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                "pm.test('required component metric groups exist', () => { const j=pm.response.json(); ['rate_limiter','key_value_store','consistent_hashing','id_generator','url_shortener','crawler'].forEach(k=>pm.expect(j).to.have.property(k)); });"
+              ],
+              "_lastExecutionId": "fa1ea93f-3c13-49d1-9469-010b61291f9b"
+            }
+          }
+        ]
+      },
+      {
+        "id": "37542cdd-9703-42e4-9325-b9b6ba196a89",
+        "name": "08 — Unauthenticated profile is rejected",
+        "request": {
+          "url": {
+            "path": [
+              "auth",
+              "me"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "method": "GET"
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "2bae3a10-e166-45d5-abab-da3fec53c4e9",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('401 without bearer token', () => pm.response.to.have.status(401));"
+              ],
+              "_lastExecutionId": "67860453-6c6a-4d57-94c4-bdfff42cdac0"
+            }
+          }
+        ]
+      },
+      {
+        "id": "75a67bfa-6ad5-4fd3-b6be-faa7bee26d06",
+        "name": "09 — Register synthetic test account",
+        "request": {
+          "url": {
+            "path": [
+              "auth",
+              "register"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "[REDACTED]"
+            }
+          ],
+          "method": "POST",
+          "body": "[BODY REDACTED]"
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "prerequest",
+            "script": {
+              "id": "8ab6f4eb-efa1-427e-a07c-706c8aecf3c9",
+              "type": "text/javascript",
+              "exec": [
+                "const t=Date.now(); pm.collectionVariables.set('studentNumber','POSTMAN-'+t); pm.collectionVariables.set('email','postman-'+t+'@example.test');"
+              ],
+              "_lastExecutionId": "68b85f25-a686-4c6f-a2a5-0826fa0d8801"
+            }
+          },
+          {
+            "listen": "test",
+            "script": {
+              "id": "e272a4cf-1f46-42e6-a56b-23517cd53880",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('new synthetic account created', () => pm.response.to.have.status(201));",
+                "const j=pm.response.json(); pm.expect(j.student_id).to.be.a('number'); pm.collectionVariables.set('studentId',String(j.student_id));"
+              ],
+              "_lastExecutionId": "793b0fb1-fc59-404e-a063-dc4de5255db5"
+            }
+          }
+        ]
+      },
+      {
+        "id": "5654d1aa-293f-4a90-9e32-f228b49fcfd3",
+        "name": "10 — Login returns bearer token",
+        "request": {
+          "url": {
+            "path": [
+              "auth",
+              "login"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "[REDACTED]"
+            }
+          ],
+          "method": "POST",
+          "body": "[BODY REDACTED]"
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "7acf7c88-0a2b-45cd-8f26-55712fc4b351",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('login succeeds', () => pm.response.to.have.status(200));",
+                "const j=pm.response.json(); pm.expect(j.access_token).to.be.a('string').and.not.empty; pm.collectionVariables.set('token',j.access_token);"
+              ],
+              "_lastExecutionId": "e3ce57a4-1a3e-4630-8bf2-0e2893d1d98c"
+            }
+          }
+        ]
+      },
+      {
+        "id": "551dc16a-4627-473d-84d1-242810f1127e",
+        "name": "11 — Authenticated identity matches account",
+        "request": {
+          "url": {
+            "path": [
+              "auth",
+              "me"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "method": "GET",
+          "auth": {
+            "type": "bearer",
+            "bearer": [
+              {
+                "type": "string",
+                "value": "[REDACTED]",
+                "key": "token"
+              }
+            ]
+          }
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "b030a5de-37a5-4970-a2aa-69939541bfcb",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('authenticated identity returned', () => pm.response.to.have.status(200));",
+                "const j=pm.response.json(); pm.test('email matches generated test account', () => pm.expect(j.email).to.eql(pm.collectionVariables.get('email'))); pm.test('role is student', () => pm.expect(j.role).to.eql('STUDENT'));"
+              ],
+              "_lastExecutionId": "02490142-48e2-413d-9294-25cca47ce8d6"
+            }
+          }
+        ]
+      },
+      {
+        "id": "69bca49a-bc6f-486f-8a7c-fe392d9e8e82",
+        "name": "12 — Student cannot create staff-only course",
+        "request": {
+          "url": {
+            "path": [
+              "courses"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "[REDACTED]"
+            }
+          ],
+          "method": "POST",
+          "body": "[BODY REDACTED]",
+          "auth": {
+            "type": "bearer",
+            "bearer": [
+              {
+                "type": "string",
+                "value": "[REDACTED]",
+                "key": "token"
+              }
+            ]
+          }
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "494ae3a7-16a8-4148-b38c-d8a1d98017b5",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('student role forbidden from staff action', () => pm.response.to.have.status(403));"
+              ],
+              "_lastExecutionId": "2eee6690-8dac-4dca-ad2f-997268fe4d7d"
+            }
+          }
+        ]
+      },
+      {
+        "id": "5ab37a2a-c720-41e6-b7a1-ddbc8606678c",
+        "name": "13 — Invalid credentials rejected",
+        "request": {
+          "url": {
+            "path": [
+              "auth",
+              "login"
+            ],
+            "host": [
+              "{{baseUrl}}"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "[REDACTED]"
+            }
+          ],
+          "method": "POST",
+          "body": "[BODY REDACTED]"
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "id": "aed4868c-d909-4edb-8255-5412e383aafd",
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('invalid password rejected', () => pm.response.to.have.status(401));"
+              ],
+              "_lastExecutionId": "192b9c6b-1d4f-4dfc-898e-8f63302baf4b"
+            }
+          }
+        ]
+      }
+    ],
+    "event": [],
+    "variable": [
+      {
+        "type": "any",
+        "value": "[REDACTED]",
+        "key": "baseUrl"
+      },
+      {
+        "type": "any",
+        "value": "[REDACTED]",
+        "key": "studentNumber"
+      },
+      {
+        "type": "any",
+        "value": "[REDACTED]",
+        "key": "fullName"
+      },
+      {
+        "type": "any",
+        "value": "[REDACTED]",
+        "key": "email"
+      },
+      {
+        "type": "any",
+        "value": "[REDACTED]",
+        "key": "password"
+      },
+      {
+        "type": "any",
+        "value": "[REDACTED]",
+        "key": "studentId"
+      },
+      {
+        "type": "any",
+        "value": "[REDACTED]",
+        "key": "token"
+      }
+    ],
+    "info": {
+      "_postman_id": "9c137b1e-4ef1-4e51-9df0-4b7713a9b351",
+      "name": "SIS — Functional API Verification",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+      "description": {
+        "content": "Coursework verification against the local SIS API. Uses synthetic data only. Registration creates one synthetic account in the configured development database.",
+        "type": "text/plain"
+      }
+    }
+  },
+  "environment": {
+    "id": "83bc4447-97e3-494d-b4b6-4f426e8fc443",
+    "values": []
+  },
+  "globals": {
+    "id": "d3af7004-77ca-4080-84c6-a8e78531a094",
+    "values": []
+  },
+  "run": {
+    "stats": {
+      "iterations": {
+        "total": 1,
+        "pending": 0,
+        "failed": 0
+      },
+      "items": {
+        "total": 13,
+        "pending": 0,
+        "failed": 0
+      },
+      "scripts": {
+        "total": 14,
+        "pending": 0,
+        "failed": 0
+      },
+      "prerequests": {
+        "total": 13,
+        "pending": 0,
+        "failed": 0
+      },
+      "requests": {
+        "total": 13,
+        "pending": 0,
+        "failed": 0
+      },
+      "tests": {
+        "total": 13,
+        "pending": 0,
+        "failed": 0
+      },
+      "assertions": {
+        "total": 24,
+        "pending": 0,
+        "failed": 0
+      },
+      "testScripts": {
+        "total": 13,
+        "pending": 0,
+        "failed": 0
+      },
+      "prerequestScripts": {
+        "total": 1,
+        "pending": 0,
+        "failed": 0
+      }
+    },
+    "timings": {
+      "responseAverage": 23.923076923076923,
+      "responseMin": 2,
+      "responseMax": 64,
+      "responseSd": 23.28902527425422,
+      "dnsAverage": 0,
+      "dnsMin": 0,
+      "dnsMax": 0,
+      "dnsSd": 0,
+      "firstByteAverage": 0,
+      "firstByteMin": 0,
+      "firstByteMax": 0,
+      "firstByteSd": 0,
+      "started": 1792559690735,
+      "completed": 1792559691247
+    },
+    "executions": [
+      {
+        "cursor": {
+          "position": 0,
+          "iteration": 0,
+          "length": 13,
+          "cycles": 1,
+          "empty": false,
+          "eof": false,
+          "bof": true,
+          "cr": false,
+          "ref": "76ee190b-a8b2-47f2-9be7-5c18e430444a",
+          "httpRequestId": "cd6f36dd-6d0c-4141-92ec-153603d513c9"
+        },
+        "item": {
+          "id": "c681b8d1-03a1-41a1-8203-1d32ad42cfb1",
+          "name": "01 — Health endpoint",
+          "request": {
+            "url": {
+              "path": [
+                "health"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "a14f83b9-ff5a-40f6-9a99-52cf8d53cd4a",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('health payload is ok', () => pm.expect(pm.response.json().status).to.eql('ok'));",
+                  "pm.test('response is JSON', () => pm.response.to.be.json);"
+                ],
+                "_lastExecutionId": "11990edc-48e0-4b54-b862-fcf3df69424a"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "health"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "GET"
+        },
+        "response": {
+          "id": "0f27c11f-2c50-4b48-9f2e-13acefa39902",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 32,
+          "responseSize": 15
+        },
+        "id": "c681b8d1-03a1-41a1-8203-1d32ad42cfb1",
+        "assertions": [
+          {
+            "assertion": "HTTP 200",
+            "skipped": false
+          },
+          {
+            "assertion": "health payload is ok",
+            "skipped": false
+          },
+          {
+            "assertion": "response is JSON",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "79ad7991-0922-4f7d-ab81-a72be60e0e8e",
+          "length": 13,
+          "cycles": 1,
+          "position": 1,
+          "iteration": 0,
+          "httpRequestId": "ba88f8e6-5dda-45d6-be64-1b421ef55fc8"
+        },
+        "item": {
+          "id": "5469f0e0-1be5-449f-9324-14b215072d6b",
+          "name": "02 — Course search responds",
+          "request": {
+            "url": {
+              "path": [
+                "courses"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "96d42a52-c3c5-46a3-90a7-05966d4bccff",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('course search returns an array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "_lastExecutionId": "45a24d69-f34d-424d-828d-ce4cd9874ca9"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "courses"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [
+              {
+                "key": "limit",
+                "value": "10"
+              }
+            ],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "GET"
+        },
+        "response": {
+          "id": "f523c31c-e28b-4fa1-9f3b-159c4f073ae1",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 50,
+          "responseSize": 746
+        },
+        "id": "5469f0e0-1be5-449f-9324-14b215072d6b",
+        "assertions": [
+          {
+            "assertion": "HTTP 200",
+            "skipped": false
+          },
+          {
+            "assertion": "course search returns an array",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "89b1f498-963b-48cc-a257-f2e0fc709563",
+          "length": 13,
+          "cycles": 1,
+          "position": 2,
+          "iteration": 0,
+          "httpRequestId": "aab9ad39-2de5-4d9e-82ce-77970840afe7"
+        },
+        "item": {
+          "id": "44fde6b0-08ae-4ed9-b248-ade2fca01017",
+          "name": "03 — Offerings endpoint responds",
+          "request": {
+            "url": {
+              "path": [
+                "offerings"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "fa7f660d-d6ae-451c-bc60-834a69a3a399",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('offerings returns an array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "_lastExecutionId": "504c2b24-9ba0-42f2-a87b-9e91d36cd38b"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "offerings"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [
+              {
+                "key": "limit",
+                "value": "10"
+              }
+            ],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "GET"
+        },
+        "response": {
+          "id": "1b594696-3d38-41d5-835b-ee11a4bd206c",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 10,
+          "responseSize": 2038
+        },
+        "id": "44fde6b0-08ae-4ed9-b248-ade2fca01017",
+        "assertions": [
+          {
+            "assertion": "HTTP 200",
+            "skipped": false
+          },
+          {
+            "assertion": "offerings returns an array",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "cb68e087-5976-42b1-9292-ed784da4015e",
+          "length": 13,
+          "cycles": 1,
+          "position": 3,
+          "iteration": 0,
+          "httpRequestId": "b1c6dd10-ee68-42dd-b17b-ee5eafa097a4"
+        },
+        "item": {
+          "id": "04d7ef38-1922-441d-88f8-9ba0c46837f9",
+          "name": "04 — Autocomplete and cache behaviour",
+          "request": {
+            "url": {
+              "path": [
+                "autocomplete"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "SYS"
+                },
+                {
+                  "key": "limit",
+                  "value": "8"
+                }
+              ],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "b950056d-d1fd-4f76-a821-96b691e300d1",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('items array and cache state returned', () => { const j=pm.response.json(); pm.expect(j.items).to.be.an('array'); pm.expect(['HIT','MISS','DISABLED']).to.include(j.cache); });"
+                ],
+                "_lastExecutionId": "ef7f4aa0-8ff8-430a-9617-99780404c015"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "autocomplete"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [
+              {
+                "key": "q",
+                "value": "SYS"
+              },
+              {
+                "key": "limit",
+                "value": "8"
+              }
+            ],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "GET"
+        },
+        "response": {
+          "id": "554f131e-4178-40fb-8db5-331afc4ad75d",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 16,
+          "responseSize": 27
+        },
+        "id": "04d7ef38-1922-441d-88f8-9ba0c46837f9",
+        "assertions": [
+          {
+            "assertion": "HTTP 200",
+            "skipped": false
+          },
+          {
+            "assertion": "items array and cache state returned",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "8bb990c4-4180-46dc-88f9-236ddeed5c08",
+          "length": 13,
+          "cycles": 1,
+          "position": 4,
+          "iteration": 0,
+          "httpRequestId": "37643eb1-57df-4faa-b6f0-4408c9c4d67a"
+        },
+        "item": {
+          "id": "baac415f-3f9b-41f7-880b-2064da1d03ad",
+          "name": "05 — Unique ID generation",
+          "request": {
+            "url": {
+              "path": [
+                "system-design",
+                "ids"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "count",
+                  "value": "25"
+                }
+              ],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "4c3be9ab-bb9b-422a-86f8-28e5b176cb6f",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('25 unique IDs', () => { const j=pm.response.json(); pm.expect(j.count).to.eql(25); pm.expect(j.unique_in_batch).to.eql(true); pm.expect(new Set(j.ids).size).to.eql(25); });",
+                  "pm.test('generation metric is positive', () => pm.expect(pm.response.json().ids_per_second).to.be.above(0));"
+                ],
+                "_lastExecutionId": "856ee1b2-ca1d-4411-b1f4-27046b217a22"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "system-design",
+              "ids"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [
+              {
+                "key": "count",
+                "value": "25"
+              }
+            ],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "GET"
+        },
+        "response": {
+          "id": "e7b45bf7-211b-40ae-8708-a4511c1da883",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 3,
+          "responseSize": 656
+        },
+        "id": "baac415f-3f9b-41f7-880b-2064da1d03ad",
+        "assertions": [
+          {
+            "assertion": "HTTP 200",
+            "skipped": false
+          },
+          {
+            "assertion": "25 unique IDs",
+            "skipped": false
+          },
+          {
+            "assertion": "generation metric is positive",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "f83d62f0-4644-4079-91a1-7b83329499ad",
+          "length": 13,
+          "cycles": 1,
+          "position": 5,
+          "iteration": 0,
+          "httpRequestId": "372096af-e23a-4f6f-99ad-a8275d70b238"
+        },
+        "item": {
+          "id": "2d1a2b80-d735-4d4a-9644-6e12134cf08c",
+          "name": "06 — Consistent hash ring metadata",
+          "request": {
+            "url": {
+              "path": [
+                "system-design",
+                "ring"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "ddb796cd-4b07-4285-87fe-c718a651d216",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('three or more nodes and virtual nodes', () => { const j=pm.response.json(); pm.expect(j.nodes).to.be.at.least(1); pm.expect(j.virtual_nodes_per_shard).to.be.above(0); });"
+                ],
+                "_lastExecutionId": "dad5ea7c-9ef5-4648-a2f4-07e57fb8e02c"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "system-design",
+              "ring"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "GET"
+        },
+        "response": {
+          "id": "917807c1-a032-4799-be25-e7ef31a6283f",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 2,
+          "responseSize": 41
+        },
+        "id": "2d1a2b80-d735-4d4a-9644-6e12134cf08c",
+        "assertions": [
+          {
+            "assertion": "HTTP 200",
+            "skipped": false
+          },
+          {
+            "assertion": "three or more nodes and virtual nodes",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "b2646d2c-3b11-4d76-938a-27f95a3e197d",
+          "length": 13,
+          "cycles": 1,
+          "position": 6,
+          "iteration": 0,
+          "httpRequestId": "73a01f2f-7a81-4d9a-a966-ce463befd792"
+        },
+        "item": {
+          "id": "b4c08882-fb37-4437-9d1a-df48a5e198e4",
+          "name": "07 — Component metrics available",
+          "request": {
+            "url": {
+              "path": [
+                "system-design",
+                "metrics"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "b85abb63-d0ee-4982-83e6-f92cbec824cd",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('required component metric groups exist', () => { const j=pm.response.json(); ['rate_limiter','key_value_store','consistent_hashing','id_generator','url_shortener','crawler'].forEach(k=>pm.expect(j).to.have.property(k)); });"
+                ],
+                "_lastExecutionId": "fa1ea93f-3c13-49d1-9469-010b61291f9b"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "system-design",
+              "metrics"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "GET"
+        },
+        "response": {
+          "id": "2cacdb85-dddb-4134-bb87-4201b6636246",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 5,
+          "responseSize": 693
+        },
+        "id": "b4c08882-fb37-4437-9d1a-df48a5e198e4",
+        "assertions": [
+          {
+            "assertion": "HTTP 200",
+            "skipped": false
+          },
+          {
+            "assertion": "required component metric groups exist",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "401f8779-f62b-459f-9822-2e4f7fbc5784",
+          "length": 13,
+          "cycles": 1,
+          "position": 7,
+          "iteration": 0,
+          "httpRequestId": "9f609218-0d98-497f-886b-2a0d3d2048c9"
+        },
+        "item": {
+          "id": "37542cdd-9703-42e4-9325-b9b6ba196a89",
+          "name": "08 — Unauthenticated profile is rejected",
+          "request": {
+            "url": {
+              "path": [
+                "auth",
+                "me"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "2bae3a10-e166-45d5-abab-da3fec53c4e9",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 without bearer token', () => pm.response.to.have.status(401));"
+                ],
+                "_lastExecutionId": "67860453-6c6a-4d57-94c4-bdfff42cdac0"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "auth",
+              "me"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "GET"
+        },
+        "response": {
+          "id": "274a9016-6610-41e2-abe0-d422186cd1ca",
+          "status": "Unauthorized",
+          "code": 401,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 4,
+          "responseSize": 34
+        },
+        "id": "37542cdd-9703-42e4-9325-b9b6ba196a89",
+        "assertions": [
+          {
+            "assertion": "401 without bearer token",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "7aeb758b-5c9b-44ec-82a0-17ab195dc44c",
+          "length": 13,
+          "cycles": 1,
+          "position": 8,
+          "iteration": 0,
+          "httpRequestId": "157927af-aa37-4d4e-a6fe-7b412b8ba05b"
+        },
+        "item": {
+          "id": "75a67bfa-6ad5-4fd3-b6be-faa7bee26d06",
+          "name": "09 — Register synthetic test account",
+          "request": {
+            "url": {
+              "path": [
+                "auth",
+                "register"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "[REDACTED]"
+              }
+            ],
+            "method": "POST",
+            "body": "[BODY REDACTED]"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "id": "8ab6f4eb-efa1-427e-a07c-706c8aecf3c9",
+                "type": "text/javascript",
+                "exec": [
+                  "const t=Date.now(); pm.collectionVariables.set('studentNumber','POSTMAN-'+t); pm.collectionVariables.set('email','postman-'+t+'@example.test');"
+                ],
+                "_lastExecutionId": "68b85f25-a686-4c6f-a2a5-0826fa0d8801"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "id": "e272a4cf-1f46-42e6-a56b-23517cd53880",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('new synthetic account created', () => pm.response.to.have.status(201));",
+                  "const j=pm.response.json(); pm.expect(j.student_id).to.be.a('number'); pm.collectionVariables.set('studentId',String(j.student_id));"
+                ],
+                "_lastExecutionId": "793b0fb1-fc59-404e-a063-dc4de5255db5"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "auth",
+              "register"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Content-Length",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "POST",
+          "body": "[BODY REDACTED]"
+        },
+        "response": {
+          "id": "6ea21b02-ee39-42c3-9d8e-273b49584c90",
+          "status": "Created",
+          "code": 201,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 64,
+          "responseSize": 92
+        },
+        "id": "75a67bfa-6ad5-4fd3-b6be-faa7bee26d06",
+        "assertions": [
+          {
+            "assertion": "new synthetic account created",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "7f4d1f5d-384c-4855-b28d-65021922d309",
+          "length": 13,
+          "cycles": 1,
+          "position": 9,
+          "iteration": 0,
+          "httpRequestId": "b75d8dfd-e117-4796-9d75-13889ef8533e"
+        },
+        "item": {
+          "id": "5654d1aa-293f-4a90-9e32-f228b49fcfd3",
+          "name": "10 — Login returns bearer token",
+          "request": {
+            "url": {
+              "path": [
+                "auth",
+                "login"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "[REDACTED]"
+              }
+            ],
+            "method": "POST",
+            "body": "[BODY REDACTED]"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "7acf7c88-0a2b-45cd-8f26-55712fc4b351",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('login succeeds', () => pm.response.to.have.status(200));",
+                  "const j=pm.response.json(); pm.expect(j.access_token).to.be.a('string').and.not.empty; pm.collectionVariables.set('token',j.access_token);"
+                ],
+                "_lastExecutionId": "e3ce57a4-1a3e-4630-8bf2-0e2893d1d98c"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "auth",
+              "login"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Content-Length",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "POST",
+          "body": "[BODY REDACTED]"
+        },
+        "response": {
+          "id": "447960dd-a8e5-45ca-9dd3-0fccb93d2347",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 58,
+          "responseSize": 161
+        },
+        "id": "5654d1aa-293f-4a90-9e32-f228b49fcfd3",
+        "assertions": [
+          {
+            "assertion": "login succeeds",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "92d4ea14-f44c-4fcd-a28e-c32296535bb7",
+          "length": 13,
+          "cycles": 1,
+          "position": 10,
+          "iteration": 0,
+          "httpRequestId": "008ff6df-2959-4b8f-9218-ef1eea9f9cbc"
+        },
+        "item": {
+          "id": "551dc16a-4627-473d-84d1-242810f1127e",
+          "name": "11 — Authenticated identity matches account",
+          "request": {
+            "url": {
+              "path": [
+                "auth",
+                "me"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "type": "string",
+                  "value": "[REDACTED]",
+                  "key": "token"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "b030a5de-37a5-4970-a2aa-69939541bfcb",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('authenticated identity returned', () => pm.response.to.have.status(200));",
+                  "const j=pm.response.json(); pm.test('email matches generated test account', () => pm.expect(j.email).to.eql(pm.collectionVariables.get('email'))); pm.test('role is student', () => pm.expect(j.role).to.eql('STUDENT'));"
+                ],
+                "_lastExecutionId": "02490142-48e2-413d-9294-25cca47ce8d6"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "auth",
+              "me"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "Authorization",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "GET",
+          "auth": {
+            "type": "bearer",
+            "bearer": [
+              {
+                "type": "string",
+                "value": "[REDACTED]",
+                "key": "token"
+              }
+            ]
+          }
+        },
+        "response": {
+          "id": "b6651693-4afe-4a40-881b-727b382abe84",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 6,
+          "responseSize": 180
+        },
+        "id": "551dc16a-4627-473d-84d1-242810f1127e",
+        "assertions": [
+          {
+            "assertion": "authenticated identity returned",
+            "skipped": false
+          },
+          {
+            "assertion": "email matches generated test account",
+            "skipped": false
+          },
+          {
+            "assertion": "role is student",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "644be340-6348-4fdf-a642-f0946c284e37",
+          "length": 13,
+          "cycles": 1,
+          "position": 11,
+          "iteration": 0,
+          "httpRequestId": "191c120b-f721-4e15-a8fd-f0dc3aad545d"
+        },
+        "item": {
+          "id": "69bca49a-bc6f-486f-8a7c-fe392d9e8e82",
+          "name": "12 — Student cannot create staff-only course",
+          "request": {
+            "url": {
+              "path": [
+                "courses"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "[REDACTED]"
+              }
+            ],
+            "method": "POST",
+            "body": "[BODY REDACTED]",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "type": "string",
+                  "value": "[REDACTED]",
+                  "key": "token"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "494ae3a7-16a8-4148-b38c-d8a1d98017b5",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('student role forbidden from staff action', () => pm.response.to.have.status(403));"
+                ],
+                "_lastExecutionId": "2eee6690-8dac-4dca-ad2f-997268fe4d7d"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "courses"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "Authorization",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Content-Length",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "POST",
+          "body": "[BODY REDACTED]",
+          "auth": {
+            "type": "bearer",
+            "bearer": [
+              {
+                "type": "string",
+                "value": "[REDACTED]",
+                "key": "token"
+              }
+            ]
+          }
+        },
+        "response": {
+          "id": "ee8da790-2e8b-454d-8d91-d8b171754e77",
+          "status": "Forbidden",
+          "code": 403,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 6,
+          "responseSize": 32
+        },
+        "id": "69bca49a-bc6f-486f-8a7c-fe392d9e8e82",
+        "assertions": [
+          {
+            "assertion": "student role forbidden from staff action",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "12ebe3d2-f492-43e7-b0c9-b724ed9a8050",
+          "length": 13,
+          "cycles": 1,
+          "position": 12,
+          "iteration": 0,
+          "httpRequestId": "1ab94131-d230-45b6-8f28-f11ac3a64311"
+        },
+        "item": {
+          "id": "5ab37a2a-c720-41e6-b7a1-ddbc8606678c",
+          "name": "13 — Invalid credentials rejected",
+          "request": {
+            "url": {
+              "path": [
+                "auth",
+                "login"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "[REDACTED]"
+              }
+            ],
+            "method": "POST",
+            "body": "[BODY REDACTED]"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "aed4868c-d909-4edb-8255-5412e383aafd",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('invalid password rejected', () => pm.response.to.have.status(401));"
+                ],
+                "_lastExecutionId": "192b9c6b-1d4f-4dfc-898e-8f63302baf4b"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8000",
+            "path": [
+              "auth",
+              "login"
+            ],
+            "host": [
+              "127",
+              "0",
+              "0",
+              "1"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "User-Agent",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "[REDACTED]",
+              "system": true
+            },
+            {
+              "key": "Content-Length",
+              "value": "[REDACTED]",
+              "system": true
+            }
+          ],
+          "method": "POST",
+          "body": "[BODY REDACTED]"
+        },
+        "response": {
+          "id": "8f70ebfc-ba21-41bb-aeac-3ceef6f1d8c9",
+          "status": "Unauthorized",
+          "code": 401,
+          "header": [
+            {
+              "key": "date",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "server",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-length",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "content-type",
+              "value": "[REDACTED]"
+            },
+            {
+              "key": "vary",
+              "value": "[REDACTED]"
+            }
+          ],
+          "cookie": "[REDACTED]",
+          "responseTime": 55,
+          "responseSize": 38
+        },
+        "id": "5ab37a2a-c720-41e6-b7a1-ddbc8606678c",
+        "assertions": [
+          {
+            "assertion": "invalid password rejected",
+            "skipped": false
+          }
+        ]
+      }
+    ],
+    "transfers": {
+      "responseTotal": 4753
+    },
+    "failures": [],
+    "error": null
+  }
+}
