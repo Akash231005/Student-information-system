@@ -1,5 +1,8 @@
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -7,6 +10,9 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth import current_account, ensure_student_access, require_staff
 from app.config import settings
 from app.db import get_db
+from app.extended import cache, init_backends, rate_limit_metrics, rate_limiter
+from app.extended import router as extended_router
+from app.infra import dependency_report
 from app.models import Course, CourseOffering, Enrollment, Student
 from app.schemas import (
     CourseCreate,
@@ -20,7 +26,18 @@ from app.schemas import (
     StudentUpdate,
 )
 
-app = FastAPI(title="SIS Scalability Lab", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    # Refuses to start when Redis or mongos is down: shared state is the whole point of
+    # these components, so a silent per-process fallback would falsify their guarantees.
+    # Clients are process-wide and closed at interpreter exit (see app.infra), so an
+    # in-process restart - such as a test client context - keeps them usable.
+    application.state.startup = init_backends()
+    yield
+
+
+app = FastAPI(title="SIS Scalability Lab", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -28,11 +45,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(extended_router)
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health():
+    try:
+        report = dependency_report()
+    except RuntimeError as exc:
+        return JSONResponse(
+            status_code=503, content={"status": "degraded", "detail": str(exc)}
+        )
+    return {"status": "ok", "database": "postgresql", "stores": report}
 
 
 @app.post("/students", response_model=StudentOut, status_code=status.HTTP_201_CREATED)
@@ -216,15 +240,8 @@ def student_enrollments(student_id: int, db: Session = Depends(get_db), account=
     ).order_by(Enrollment.id)
     return list(db.scalars(stmt).all())
 
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
-from app.extended import cache, rate_limit_metrics, rate_limiter
-from app.extended import router as extended_router
-
-app.include_router(extended_router)
-
-# Process-local counters are for the lab dashboard; production metrics belong in Prometheus.
+# Process-local counters are for the lab dashboard; the rate-limit *decisions* are shared
+# through Redis, so the limiter itself is cluster-wide even though these counters are not.
 import time
 
 RATE_LIMIT_ENABLED = settings.rate_limit_enabled

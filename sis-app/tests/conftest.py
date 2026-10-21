@@ -1,4 +1,10 @@
+import os
 from types import SimpleNamespace
+
+# The limiter's buckets now live in Redis and are shared between runs, so a suite that
+# exercises dozens of requests would otherwise spend the same allowance a real client uses.
+# Rate-limit behaviour itself is asserted directly against Redis in test_components.py.
+os.environ.setdefault("SIS_RATE_LIMIT_ENABLED", "false")
 
 import pytest
 from sqlalchemy import select

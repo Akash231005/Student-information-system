@@ -1,0 +1,1 @@
+{"key":"record-0001","ring_prediction":"sis-shard-a","actual_owner":"sis-shard-a","nodes":["sis-shard-a","sis-shard-b"],"agrees":true,"note":"ring_prediction is the application hash ring; actual_owner is the shard mongos picks when it explains the query, so disagreement is visible rather than hidden."}

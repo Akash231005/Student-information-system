@@ -12,8 +12,10 @@ every architectural claim in it is backed by a test, a benchmark, or an explicit
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-2fb8a0?style=flat-square&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.148-2fb8a0?style=flat-square&logo=fastapi&logoColor=white)
 ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-2fb8a0?style=flat-square&logo=postgresql&logoColor=white)
+![Redis 7](https://img.shields.io/badge/Redis-7-2fb8a0?style=flat-square&logo=redis&logoColor=white)
+![MongoDB 7 sharded](https://img.shields.io/badge/MongoDB-7%20sharded-2fb8a0?style=flat-square&logo=mongodb&logoColor=white)
 ![React 19](https://img.shields.io/badge/React-19-2fb8a0?style=flat-square&logo=react&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-24-2fb8a0?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-37-2fb8a0?style=flat-square)
 ![Status](https://img.shields.io/badge/status-coursework%20prototype-ff5a4f?style=flat-square)
 
 <img src="deliverables/screenshots/00-overview-viewport.png" alt="Orbit SIS dashboard" width="820">
@@ -68,9 +70,20 @@ increment.
 
 PostgreSQL is authoritative for students, courses, offerings, enrollments, grades, attendance, timetable
 entries, notifications, and short links. The cache is an optimization only — it is never consulted to
-decide whether a seat is available or a grade is valid. The rate limiter, cache, hash ring and shard
-store are deliberately **process-local lab components**, and the documentation says so rather than
-dressing them up as a distributed system.
+decide whether a seat is available or a grade is valid.
+
+The shared-state components run against real services, because a dictionary in the API process proves
+nothing about a multi-process deployment:
+
+- **Redis 7** holds the rate-limit token buckets (atomic Lua read-modify-write), the autocomplete TTL
+  cache, and the ID generator's worker-slot counter. Two app processes therefore spend one allowance and
+  share one cache — verified in the test suite and in `scripts/verify_stack.py`.
+- **MongoDB 7, sharded**: one `mongos` router, a config-server replica set holding chunk metadata, and
+  two shard replica sets. The collection is sharded on `{_id: "hashed"}`, so the record key is the shard
+  key. The app keeps a consistent-hash ring as the routing design under study and prints the ring's
+  answer next to the router's answer, so a disagreement is visible rather than hidden.
+- **The app refuses to start if either is missing.** There is no in-memory fallback — that is what turned
+  this from a demo into something that can actually fail.
 
 ## Required system-design components
 
@@ -78,14 +91,14 @@ Each component is implemented as a measurable experiment, with its limitation st
 
 | Component | Implementation | How it is demonstrated | Stated limitation |
 |---|---|---|---|
-| Rate limiter | Thread-safe token bucket in HTTP middleware | HTTP 429 counts, request/error metrics | Process-local; not shared across replicas |
-| Sharding | Synthetic records in per-shard dictionaries | Record count per shard, orphaned keys | Not PostgreSQL data sharding |
-| Consistent hashing | SHA-256 ring, 100 virtual nodes per shard | Add-node experiment reports moved-key fraction | Routing does not migrate or replicate data |
-| Key-value store | Bounded TTL + LRU cache for autocomplete | Hits, misses, item count, latency delta | Process-local; up to 20 s stale |
-| Unique ID generator | Time-sortable 64-bit ID + worker ID + sequence | Batch size, uniqueness in batch, collisions | Worker ID fixed; no multi-worker coordination |
+| Rate limiter | Token bucket in Redis, one Lua script per decision | HTTP 429 counts; a second process gets no extra tokens | Single Redis node; an outage returns 503, not unlimited traffic |
+| Sharding | Real `mongos` + config server + 2 shard replica sets, hashed `_id` | Documents/chunks per shard; `explain` shows the owner; `moveChunk` really moves data | Two shards on one host; single-member replica sets |
+| Consistent hashing | SHA-256 ring, 100 virtual nodes, built from the live shard set | Add-node experiment reports moved-key fraction; ring vs router answer per key | Ring routes only; it never moves data |
+| Key-value store | Redis `SETEX` TTL cache for autocomplete | Hits, misses, item count, TTL, latency delta | 128 MB `allkeys-lru`; entries can evict before TTL |
+| Unique ID generator | Time-sortable 64-bit ID; worker slot claimed with `INCR mod 1024` in Redis | Batch size, uniqueness in batch, collisions | Slots are leased, never released |
 | URL shortener | Random short code persisted in PostgreSQL | Create/redirect latency under load | No expiry, analytics or abuse policy yet |
-| Web crawler | Bounded same-host public-HTTPS crawler | Pages crawled, failures, frontier size, elapsed | Not a general-purpose distributed crawler |
-| Autocomplete | Course-code/title prefix query + TTL cache | p50/p95 and cache hit/miss counts | Prefix only; no typo tolerance or ranking |
+| Web crawler | robots.txt (RFC 9309) + `Crawl-delay`, 429/503 retry with `Retry-After`, durable frontier in MongoDB | Pages crawled, errors, frontier size, and a second run that resumes instead of refetching | Same-host, serial, single process |
+| Autocomplete | Course-code/title prefix query + Redis TTL cache | p50/p95 and cache hit/miss counts | Prefix only; no typo tolerance or ranking |
 
 ## Measured results
 
@@ -94,12 +107,16 @@ Each component is implemented as a measurable experiment, with its limitation st
 
 | Workload | Requests | Failures | p50 | Mean | p95 | Throughput |
 |---|---:|---:|---:|---:|---:|---:|
-| Autocomplete, cache disabled | 659 | 0 | 5 | 5.85 | 10 | 34.68 req/s |
-| Autocomplete, cache enabled | 675 | 0 | 2 | 2.88 | 5 | 35.55 req/s |
+| Autocomplete, cache disabled (in-process LRU, pre-Redis) | 659 | 0 | 5 | 5.85 | 10 | 34.68 req/s |
+| Autocomplete, cache enabled (in-process LRU, pre-Redis) | 675 | 0 | 2 | 2.88 | 5 | 35.55 req/s |
 | Course search + offering list | 681 | 0 | 5 | 5.65 | 10 | 35.82 req/s |
 | Authenticated profile / grades / enrollments / timetable | 669 | 0 | 5 | 7.43 | 12 | 35.27 req/s |
 | Student registration writes | 370 | 0 | 60 | 63.63 | 83 | 19.47 req/s |
 | Course-search overload, rate limiter on | 676 | 243 (35.95%) | 4 | 4.27 | 10 | 35.61 req/s |
+
+The two cache rows predate the Redis migration and are kept because they are what was measured; the
+Redis-backed cache is verified functionally but has not been re-benchmarked. See
+[`PERFORMANCE_EVALUATION.md`](sis-app/docs/PERFORMANCE_EVALUATION.md).
 
 **What the numbers support.** With cache enabled, autocomplete mean latency fell ~50.8% (5.85 → 2.88 ms),
 p50 fell 60% (5 → 2 ms) and p95 fell 50% (10 → 5 ms) — with essentially unchanged throughput. Registration
@@ -112,6 +129,29 @@ The application, load generator and database share one machine, so cross-host ne
 Caching did not improve throughput here and may not generalize. Rejected requests did not succeed — rate
 limiting protects the service, it does not create capacity. Every limitation is written down in
 [`sis-app/docs/PERFORMANCE_EVALUATION.md`](sis-app/docs/PERFORMANCE_EVALUATION.md) rather than smoothed over.
+
+## Measured against the real stack
+
+The service-backed components are not described, they are executed. `sis-app/scripts/verify_stack.py`
+runs every check against the live containers and writes the raw output to
+[`stack_verification.json`](sis-app/docs/verification/stack_verification.json). The numbers from the
+recorded run:
+
+| Check | Result |
+|---|---|
+| Stores reachable | Redis 7.4.11 · MongoDB 7.0.45 via `mongos` (`isdbgrid`) · PostgreSQL 17 |
+| Rate limiter shared across processes | worker A spent all 3 tokens of capacity 3; worker B was refused |
+| Cache TTL | key present at TTL 1 s, `None` after expiry |
+| ID worker slots | two claims returned distinct slots; 1,000 generated IDs, 1,000 unique |
+| Sharded records | 500 records split 249 / 251 across two shards, 3 chunks each |
+| `moveChunk` | 129 / 371 after the move; all 500 keys still readable |
+| Rebalance | back to 256 / 244, 3 chunks per shard |
+| Live crawl | `www.iana.org`, robots parsed, 5 pages stored, 1 error (>1 MB page) |
+| Crawl resume | second run took 5 URLs off the persisted frontier, refetched 0 |
+
+The suite that guards this is `37 passed, 2 skipped` — the skips being the PostgreSQL race test
+(needs an explicit `DATABASE_URL`) and the live crawl (opt-in via `SIS_LIVE_CRAWL=1`, so the suite never
+hits a third-party site by default).
 
 ## Frontend
 
@@ -209,14 +249,11 @@ scripts/                 report, poster and presentation generators
 
 The honest version, because a system-design submission is judged on the quality of its claims:
 
-- **Not a production SIS.** Single-host, single-process, no deployment, no HA, no backups, no ops story.
+- **Not a production SIS.** Single host, no deployment pipeline, no backups, no on-call story.
 - **Not a microservices system.** It is a modular monolith, chosen because independent scaling or fault
   isolation would need to be justified by measurement the prototype does not have.
-- **Not real sharding.** Shards are synthetic in-memory dictionaries; consistent hashing routes keys and
-  never migrates or replicates data.
-- **Not a distributed cache or limiter.** Both are process-local and reset on restart.
-- **Not a live crawler result.** Crawler behavior is verified against a mocked HTTPS response; DNS was
-  unavailable during verification, so no live-crawl throughput is claimed.
+- **Not highly available.** Redis and the MongoDB shards are real and shared between app processes, but
+  each runs unreplicated on one host: state being *shared* is proven, state being *survivable* is not.
 - **Not real student data.** Everything is generated synthetically.
 
 ## Academic context

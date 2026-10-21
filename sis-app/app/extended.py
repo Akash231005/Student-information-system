@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from time import perf_counter
-from urllib.parse import urlparse
+from urllib.parse import urldefrag, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, func, select, update
@@ -10,13 +10,18 @@ from sqlalchemy.orm import Session
 from app.auth import current_account, ensure_student_access, require_staff
 from app.components import (
     ConsistentHashRing,
-    TokenBucketRateLimiter,
-    TTLKeyValueStore,
+    RedisTokenBucket,
+    RedisTTLStore,
     UniqueIdGenerator,
+    claim_worker_id,
     make_short_code,
 )
 from app.config import settings
+from app.crawler import _is_public_https
+from app.crawler import crawl as run_crawler
+from app.crawlstore import CrawlStore
 from app.db import get_db
+from app.infra import dependency_report, get_mongo_client, get_mongo_db, get_redis
 from app.models import (
     AcademicNotification,
     Assessment,
@@ -36,39 +41,61 @@ from app.schemas import (
     NotificationCreate,
     TimetableEventCreate,
 )
+from app.shardstore import MongoShardStore
 
 router = APIRouter()
-rate_limiter = TokenBucketRateLimiter(capacity=120, refill_per_second=10)
+
+_redis = get_redis()
+rate_limiter = RedisTokenBucket(
+    _redis,
+    capacity=settings.rate_limit_capacity,
+    refill_per_second=settings.rate_limit_refill_per_second,
+)
 rate_limit_metrics = {"rejections": 0}
-cache = TTLKeyValueStore(max_items=500)
-CACHE_ENABLED = settings.cache_enabled
+cache = RedisTTLStore(_redis)
 cache_stats = {"hits": 0, "misses": 0}
-hash_ring = ConsistentHashRing(["shard-a", "shard-b", "shard-c"])
-id_generator = UniqueIdGenerator(worker_id=1)
+shard_store = MongoShardStore(get_mongo_client(), settings.mongo_db)
+crawl_store = CrawlStore(get_mongo_db())
+
+# Both are rebound by init_backends() once the cluster answers; nothing below this line
+# touches the network at import time.
+hash_ring = ConsistentHashRing()
+id_generator = UniqueIdGenerator(worker_id=0)
 id_metrics = {"generated": 0, "batches": 0, "collisions": 0, "last_batch_elapsed_ms": 0.0, "last_batch_ids_per_second": 0.0}
 crawler_metrics = {"runs": 0, "pages_crawled": 0, "errors": 0, "elapsed_ms_total": 0.0}
-crawler_seen: set[str] = set()
+
+
+def init_backends() -> dict:
+    """Verify both stores, reserve this process's ID worker slot and sync the hash ring.
+
+    Called from the application lifespan. Raises if Redis or mongos is unreachable: the
+    rate-limit and cache guarantees only hold while the state is genuinely shared.
+    """
+    global id_generator, hash_ring
+    report = dependency_report()
+    id_generator = UniqueIdGenerator(worker_id=claim_worker_id(_redis))
+    crawl_store.init()
+    sharding = shard_store.ensure_sharded()
+    hash_ring = ConsistentHashRing(shard_store.shards())
+    return {"stores": report, "id_worker": id_generator.worker_id, "sharding": sharding}
 
 
 @router.get("/autocomplete")
 def autocomplete(q: str = Query(min_length=1, max_length=80), limit: int = Query(8, ge=1, le=20),
                  db: Session = Depends(get_db)):
     key = f"autocomplete:{q.strip().lower()}:{limit}"
-    if CACHE_ENABLED:
-        cached = cache.get(key)
-        if cached is not None:
-            cache_stats["hits"] += 1
-            return {"items": cached, "cache": "HIT"}
-        cache_stats["misses"] += 1
+    cached = cache.get(key)
+    if cached is not None:
+        cache_stats["hits"] += 1
+        return {"items": cached, "cache": "HIT"}
+    cache_stats["misses"] += 1
     term = q.strip().lower()
     rows = db.scalars(select(Course).where(
         Course.course_code.ilike(f"{term}%") | Course.title.ilike(f"{term}%")
     ).order_by(Course.course_code).limit(limit)).all()
     items = [{"id": c.id, "course_code": c.course_code, "title": c.title} for c in rows]
-    if CACHE_ENABLED:
-        cache.set(key, items, ttl_seconds=20)
-        return {"items": items, "cache": "MISS"}
-    return {"items": items, "cache": "DISABLED"}
+    cache.set(key, items, ttl_seconds=settings.cache_ttl_seconds)
+    return {"items": items, "cache": "MISS"}
 
 
 @router.post("/short-links", status_code=201)
@@ -101,13 +128,24 @@ def redirect_short_link(code: str, db: Session = Depends(get_db)):
 
 @router.get("/system-design/route/{key}")
 def route_shard(key: str):
-    return {"key": key, "shard": hash_ring.route(key), "nodes": hash_ring.node_count(),
-            "note": "Routing demonstration only; no data migration or replication is performed."}
+    predicted = hash_ring.route(key)
+    actual = shard_store.owner_of(key)
+    return {
+        "key": key,
+        "ring_prediction": predicted,
+        "actual_owner": actual,
+        "nodes": list(hash_ring.nodes()),
+        "agrees": None if actual is None else predicted == actual,
+        "note": "ring_prediction is the application hash ring; actual_owner is the shard mongos "
+                "picks when it explains the query, so disagreement is visible rather than hidden.",
+    }
 
 
 @router.get("/system-design/ring")
 def ring_info():
-    return {"nodes": hash_ring.node_count(), "virtual_nodes_per_shard": hash_ring.replicas}
+    return {"nodes": hash_ring.node_count(), "virtual_nodes_per_shard": hash_ring.replicas,
+            "node_names": list(hash_ring.nodes()), "cluster_shards": shard_store.shards(),
+            "shard_key": shard_store.shard_key()}
 
 
 @router.post("/system-design/ring/nodes", status_code=201)
@@ -118,7 +156,10 @@ def add_ring_node(payload: dict, _staff=Depends(require_staff)):
     before = hash_ring.node_count()
     hash_ring.add_node(node)
     return {"nodes_before": before, "nodes_after": hash_ring.node_count(),
-            "added": hash_ring.node_count() > before}
+            "added": hash_ring.node_count() > before,
+            "note": "Ring membership only. Registering a real shard with mongos is a separate "
+                    "cluster operation (docs/DEMO_RUNBOOK.md); chunks then move via "
+                    "/system-design/shards/rebalance."}
 
 
 @router.delete("/system-design/ring/nodes/{node}")
@@ -152,21 +193,27 @@ def generate_ids(count: int = Query(1, ge=1, le=1000)):
 def component_metrics(db: Session = Depends(get_db)):
     short_link_count = db.scalar(select(func.count()).select_from(ShortLink)) or 0
     return {
-        "rate_limiter": {"algorithm": "token bucket", "capacity": rate_limiter.capacity,
+        "rate_limiter": {"algorithm": "token bucket in Redis (atomic Lua)",
+                         "capacity": rate_limiter.capacity,
                          "refill_per_second": rate_limiter.refill_rate,
-                         "rejections": rate_limit_metrics["rejections"], "scope": "single process"},
-        "key_value_store": {"type": "bounded TTL + LRU", "enabled": CACHE_ENABLED,
-                            "items": len(cache._items), **cache_stats},
+                         "rejections": rate_limit_metrics["rejections"],
+                         "scope": "shared by every app process",
+                         "active_buckets": rate_limiter.tracked_keys()},
+        "key_value_store": {"type": "Redis TTL cache, server-side expiry",
+                            "ttl_seconds": settings.cache_ttl_seconds,
+                            "items": cache.item_count(), **cache.eviction_policy(), **cache_stats},
         "consistent_hashing": {"nodes": list(hash_ring.nodes()),
                                 "virtual_nodes_per_node": hash_ring.replicas},
-        "id_generator": {"algorithm": "time-sortable 64-bit", "scope": "single worker",
-                         **id_metrics},
+        "id_generator": {"algorithm": "time-sortable 64-bit",
+                         "scope": "worker id reserved in Redis",
+                         "worker_id": id_generator.worker_id, **id_metrics},
         "url_shortener": {"persisted_links": short_link_count, "redirect_status": 307},
-        "crawler": {**crawler_metrics,
+        "sharding": {**shard_store.cluster_health(), **shard_store.distribution()},
+        "crawler": {**crawler_metrics, "store": crawl_store.stats(),
                     "average_pages_per_second": round(
                         crawler_metrics["pages_crawled"] / max(crawler_metrics["elapsed_ms_total"] / 1000, 0.001), 2
                     )},
-        "autocomplete_cache_ttl_seconds": 20,
+        "autocomplete_cache_ttl_seconds": settings.cache_ttl_seconds,
     }
 
 
@@ -326,9 +373,9 @@ def list_notifications(student_id: int, db: Session = Depends(get_db), account=D
              "read_at": n.read_at, "created_at": n.created_at} for n in rows]
 
 
-@router.post("/system-design/crawler/submit")
+@router.post("/system-design/crawler/submit", status_code=202)
 def crawler_submit(payload: dict, _staff=Depends(require_staff)):
-    """Bounded synthetic crawler queue: accepts URLs but does not fetch arbitrary network targets."""
+    """Queue public HTTPS URLs in the durable MongoDB frontier for the next crawl run."""
     urls = payload.get("urls", [])
     if not isinstance(urls, list) or len(urls) > 100:
         raise HTTPException(status_code=422, detail="urls must be a list of at most 100 URLs")
@@ -338,50 +385,66 @@ def crawler_submit(payload: dict, _staff=Depends(require_staff)):
         if not isinstance(value, str) or len(value) > 2048:
             rejected.append({"url": str(value)[:100], "reason": "invalid URL"})
             continue
-        parsed = urlparse(value)
-        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-            rejected.append({"url": value, "reason": "only credential-free HTTPS URLs accepted"})
+        if not _is_public_https(value):
+            rejected.append({"url": value, "reason": "only public credential-free HTTPS URLs accepted"})
             continue
-        if value not in crawler_seen:
-            crawler_seen.add(value)
-            accepted.append(value)
-    return {"accepted": accepted, "rejected": rejected, "unique_seen": len(crawler_seen),
-            "note": "This prototype tracks a crawl frontier only; it does not fetch or parse pages yet."}
-
-# Experimental shard-local key/value data. This is deliberately separate from authoritative
-# academic records; it demonstrates routing and movement, not PostgreSQL horizontal scaling.
-shard_data: dict[str, dict[str, dict]] = {node: {} for node in ["shard-a", "shard-b", "shard-c"]}
+        url = urldefrag(value)[0]
+        crawl_store.enqueue([(url, 0)], url)
+        accepted.append(url)
+    return {"accepted": accepted, "rejected": rejected,
+            "frontier_pending": crawl_store.pending_count(),
+            "note": "Queued in MongoDB under each URL as its own seed. A run against that seed "
+                    "consumes the queue and skips anything already stored."}
 
 
+# Sharded records live in MongoDB behind mongos; the shard key is the record key itself.
 @router.put("/system-design/sharded-records/{key}")
 def put_sharded_record(key: str, payload: dict, _staff=Depends(require_staff)):
-    node = hash_ring.route(key)
-    if node is None:
-        raise HTTPException(status_code=503, detail="No shard nodes available")
-    shard_data.setdefault(node, {})[key] = payload
-    return {"key": key, "shard": node, "stored": True}
+    return shard_store.put(key, payload)
 
 
 @router.get("/system-design/sharded-records/{key}")
 def get_sharded_record(key: str):
-    node = hash_ring.route(key)
-    if node is None:
-        raise HTTPException(status_code=503, detail="No shard nodes available")
-    value = shard_data.get(node, {}).get(key)
+    value = shard_store.get(key)
     if value is None:
-        raise HTTPException(status_code=404, detail="Key not found on its routed shard")
-    return {"key": key, "shard": node, "value": value}
+        raise HTTPException(status_code=404, detail="Key not found")
+    return {"key": key, "shard": shard_store.owner_of(key), "value": value}
 
 
 @router.get("/system-design/sharded-records")
 def shard_distribution():
-    counts = {node: len(shard_data.get(node, {})) for node in hash_ring.nodes()}
-    orphaned = {node: len(records) for node, records in shard_data.items() if node not in hash_ring.nodes() and records}
-    return {"counts": counts, "orphaned_records_by_removed_node": orphaned,
-            "total_records": sum(counts.values()) + sum(orphaned.values()),
-            "warning": "In-memory demo data is lost on restart; node removal does not migrate records."}
+    distribution = shard_store.distribution()
+    predicted = hash_ring.ownership(shard_store.key_range(limit=500))
+    return {
+        "distribution": distribution,
+        "ring_prediction": predicted,
+        "note": "distribution counts come from the cluster (collStats plus config.chunks); "
+                "ring_prediction is what the application ring would have chosen.",
+    }
 
-from app.crawler import crawl as run_crawler
+
+@router.get("/system-design/shards")
+def shard_cluster_health():
+    return shard_store.cluster_health()
+
+
+@router.post("/system-design/shards/rebalance")
+def shard_rebalance(_staff=Depends(require_staff)):
+    return shard_store.rebalance()
+
+
+@router.post("/system-design/shards/move-chunk")
+def shard_move_chunk(payload: dict, _staff=Depends(require_staff)):
+    to_shard = payload.get("to_shard")
+    from_shard = payload.get("from_shard")
+    if not isinstance(to_shard, str):
+        raise HTTPException(status_code=422, detail="to_shard is required")
+    if from_shard is not None and not isinstance(from_shard, str):
+        raise HTTPException(status_code=422, detail="from_shard must be a string when given")
+    try:
+        return shard_store.move_chunk(to_shard, from_shard=from_shard)
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/system-design/crawler/run")
@@ -393,14 +456,19 @@ def run_web_crawler(payload: dict, _staff=Depends(require_staff)):
     if not isinstance(max_pages, int) or not 1 <= max_pages <= 20:
         raise HTTPException(status_code=422, detail="max_pages must be between 1 and 20")
     try:
-        result = run_crawler(seed, max_pages=max_pages)
-        crawler_metrics["runs"] += 1
-        crawler_metrics["pages_crawled"] += result["pages_crawled"]
-        crawler_metrics["errors"] += len(result["errors"])
-        crawler_metrics["elapsed_ms_total"] += result["elapsed_ms"]
-        return result
+        result = run_crawler(seed, max_pages=max_pages, store=crawl_store)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    crawler_metrics["runs"] += 1
+    crawler_metrics["pages_crawled"] += result["pages_crawled"]
+    crawler_metrics["errors"] += len(result["errors"])
+    crawler_metrics["elapsed_ms_total"] += result["elapsed_ms"]
+    return result
+
+
+@router.get("/system-design/crawler/state")
+def crawler_state(limit: int = Query(25, ge=1, le=100)):
+    return {**crawl_store.stats(), "recent_pages": crawl_store.recent_pages(limit)}
 
 @router.post("/enrollments/{enrollment_id}/drop")
 def drop_enrollment(enrollment_id: int, db: Session = Depends(get_db), account=Depends(current_account)):
@@ -449,23 +517,40 @@ def mark_notification_read(notification_id: int, db: Session = Depends(get_db), 
 
 @router.post("/system-design/ring/experiment")
 def ring_movement_experiment(
-    node: str = Query(default="shard-d", min_length=1, max_length=64),
+    node: str = Query(default="shard-c", min_length=1, max_length=64),
     key_count: int = Query(default=1000, ge=10, le=10000),
+    migrate: bool = Query(default=False),
     _staff=Depends(require_staff),
 ):
+    """Add a node to the ring and report how many keys the ring would move.
+
+    With `migrate=true` the cluster is asked to make that real: chunks are migrated until
+    every registered shard holds an even share, then stored keys are re-read to prove no
+    record was lost.
+    """
     keys = [f"synthetic-key-{i}" for i in range(key_count)]
     simulation = ConsistentHashRing(list(hash_ring.nodes()), replicas=hash_ring.replicas)
     before = {key: simulation.route(key) for key in keys}
     old_nodes = simulation.node_count()
     simulation.add_node(node)
-    after = {key: simulation.route(key) for key in keys}
-    moved = sum(before[key] != after[key] for key in keys)
-    return {
+    moved = sum(before[key] != simulation.route(key) for key in keys)
+
+    result = {
         "keys_sampled": key_count,
         "nodes_before": old_nodes,
         "nodes_after": simulation.node_count(),
         "node_added": simulation.node_count() > old_nodes,
-        "keys_moved": moved,
-        "moved_fraction": moved / key_count,
-        "warning": "Simulation only: routing changed; stored shard data was not migrated.",
+        "keys_rerouted": moved,
+        "rerouted_fraction": moved / key_count,
     }
+    if migrate and shard_store.is_sharded():
+        stored = shard_store.key_range(limit=200)
+        result["chunk_migration"] = shard_store.rebalance()
+        result["keys_still_readable"] = sum(1 for key in stored if shard_store.get(key) is not None)
+        result["keys_checked"] = len(stored)
+    else:
+        result["note"] = (
+            "Ring membership updated only. Pass migrate=true to move real chunks with the "
+            "cluster balancer, or use /system-design/shards/move-chunk for one explicit move."
+        )
+    return result

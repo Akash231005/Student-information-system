@@ -35,8 +35,8 @@
 
 ### 5. Performance and trade-offs (60–90 seconds)
 - Show the separate Locust CSV files and compare p50/p95/throughput/error rate.
-- Explain which state is PostgreSQL-authoritative and which component demos are process-local.
-- Explicitly state the limitations: role/self-access checks are implemented, but token revocation/refresh and production identity controls are absent; cache/rate limiting are process-local; short links persist in PostgreSQL; shard storage is simulated and does not shard PostgreSQL.
+- Explain which state is PostgreSQL-authoritative and which is shared through Redis or the MongoDB sharded cluster.
+- Explicitly state the limitations: role/self-access checks are implemented, but token revocation/refresh and production identity controls are absent; Redis and the MongoDB members are single unreplicated nodes on one host; short links persist in PostgreSQL; academic records are not sharded — only the component's own collection is.
 
 ## If anything fails
 - Fall back to the saved pytest output and Locust CSVs.

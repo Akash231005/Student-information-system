@@ -1,5 +1,9 @@
 # Implementation status — 2026-10-19
 
+> **Superseded in part.** The 21 October section at the end of this file records the migration of the
+> lab components onto real Redis and a real MongoDB sharded cluster, and corrects the statements below
+> that describe process-local state, simulated shards and an unverified crawler.
+
 ## Implemented
 
 - FastAPI modular monolith, SQLAlchemy 2, PostgreSQL driver, Alembic migrations and browser dashboard.
@@ -46,3 +50,59 @@ Cache-on mean latency was 2.88 ms versus 5.85 ms with cache disabled. The overlo
 - A separate API-process sample observed ~7.4% average CPU of one logical CPU (sampled peak 16%) and ~90.7 MiB RSS; this is not continuous peak telemetry or total host/database usage.
 - The cache and rate-limit measurements are one short run per condition. Repeat runs at longer durations and capture API/PostgreSQL/load-generator resources before making scaling claims.
 - Add token revocation/refresh, shared Redis coordination, waitlist/outbox lifecycle, real shard migration/replication, crawler SSRF/DNS-pinning hardening and CI concurrency tests before any production-like deployment.
+
+---
+
+# Implementation status — 2026-10-21 (supersedes the limitations above)
+
+The lab components were moved out of the API process and onto real services. The earlier sections are
+kept as the record of what was true on 19 October; the statements they make about process-local state,
+simulated shards and an unverified crawler no longer describe the code.
+
+## What changed
+
+- **Redis 7 is now required shared state.** The token bucket is a Lua script in Redis
+  (`RedisTokenBucket`), the autocomplete cache is `SETEX` with `SCAN`-based prefix invalidation
+  (`RedisTTLStore`), and the ID generator's worker slot comes from `INCR mod 1024`. The in-memory
+  `TokenBucketRateLimiter`, `TTLKeyValueStore` and per-process worker counter were deleted.
+- **MongoDB 7 sharded cluster is now required.** `mongos` router (27017) + config-server replica set
+  (27019) + `sis-shard-a` (27021) and `sis-shard-b` (27022). Collection `sharded_records` is sharded on
+  `{_id: "hashed"}`. `app/shardstore.py` performs real `chunk_map`, `owner_of` (via `explain`),
+  `move_chunk` (explicit bounds — hashed keys reject `find`) and `rebalance`.
+- **The in-memory shard suggestion was deleted.** The consistent-hash ring survives as real routing math
+  and is now printed *next to* the router's answer, so a disagreement is visible instead of hidden.
+- **The crawler was rebuilt.** robots.txt with RFC 9309 semantics, per-host `Crawl-delay` pacing,
+  429/503 retry honouring `Retry-After`, gzip handling, cross-host redirect refusal, a durable frontier
+  and page store in MongoDB, bounded attempts, and deduplication keyed on the *requested* URL.
+- **No fallback path.** `app/infra.py` raises at startup if Redis or `mongos` is unreachable, and
+  `/health` returns 503 listing the failing store. The app cannot silently degrade to local dictionaries.
+- `scripts/start_stack.sh` brings the whole stack up idempotently; `scripts/verify_stack.py` measures it
+  and writes `sis-app/docs/verification/stack_verification.json`.
+
+## Verified on 2026-10-21
+
+| Check | Result |
+|---|---|
+| Automated suite | **37 passed, 2 skipped** (PostgreSQL race test needs an explicit `DATABASE_URL`; live crawl is opt-in) |
+| Ruff | passed |
+| Stores | Redis 7.4.11, MongoDB 7.0.45 through `mongos` (`isdbgrid`), PostgreSQL 17 |
+| Rate limiter across processes | capacity 3 spent by worker A; worker B refused |
+| Cache TTL | present at TTL 1 s, `None` after expiry |
+| ID worker slots | two distinct slots claimed; 1,000 generated IDs, 1,000 unique |
+| Sharding | 500 records → 249/251 across two shards, 3 chunks each |
+| `moveChunk` | 129/371 after the move; all 500 keys still readable; no data lost |
+| Rebalance | 256/244, 3 chunks per shard |
+| Live crawl | `www.iana.org` robots parsed, 5 pages stored, 1 page rejected at the 1 MB cap |
+| Crawl resume | second run took 5 URLs from the persisted frontier and refetched none |
+
+## Still true, and still limitations
+
+- Redis and the MongoDB members are single nodes on one host: shared, not highly available.
+- The consistent-hash ring is a startup snapshot; `mongos` owns placement and reacts immediately, the
+  ring catches up on restart.
+- The Locust baseline above predates the Redis migration and used the in-memory cache. It has not been
+  re-run; the Redis cache is verified functionally, not re-benchmarked.
+- The crawler is same-host, serial and single-process by design. DNS rebinding is still not defended
+  against; do not run it as a public arbitrary-URL fetch service.
+- Rate limiting still controls request rate, not the seat invariant — PostgreSQL remains the correctness
+  boundary for enrollment.

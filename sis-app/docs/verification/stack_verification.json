@@ -1,0 +1,256 @@
+{
+  "stores": {
+    "redis": {
+      "url": "redis://127.0.0.1:6379/0",
+      "version": "7.4.11",
+      "used_memory_human": "1.28M",
+      "maxmemory_policy": "allkeys-lru"
+    },
+    "mongodb": {
+      "uri": "mongodb://127.0.0.1:27017",
+      "version": "7.0.45",
+      "is_mongos": true,
+      "database": "sis"
+    }
+  },
+  "postgres": {
+    "students": 1,
+    "courses": 2,
+    "offerings": 0
+  },
+  "rate_limiter": {
+    "capacity": 3,
+    "first_worker_grants": 3,
+    "second_worker_granted": false,
+    "shared_bucket": true
+  },
+  "cache": {
+    "ttl_seconds_seen": 1,
+    "value_after_expiry": null
+  },
+  "id_generator": {
+    "worker_a": 1,
+    "worker_b": 2,
+    "will_be_disjoint": true,
+    "batch_size": 1000,
+    "unique_in_batch": 1000
+  },
+  "sharding": {
+    "cluster": {
+      "router": "unknown",
+      "is_mongos": true,
+      "server_version": "7.0.45",
+      "shards": [
+        "sis-shard-a",
+        "sis-shard-b"
+      ],
+      "shard_key": {
+        "_id": "hashed"
+      },
+      "chunks": 6,
+      "balancer_mode": "full"
+    },
+    "ensure": {
+      "namespace": "sis_verify.sharded_records",
+      "shard_key": {
+        "_id": "hashed"
+      },
+      "shards": [
+        "sis-shard-a",
+        "sis-shard-b"
+      ],
+      "chunks": 6,
+      "splits_performed": 2
+    },
+    "chunks": [
+      {
+        "min": {
+          "_id": "-inf"
+        },
+        "max": {
+          "_id": -4611686018427387904
+        },
+        "shard": "sis-shard-b",
+        "jumbo": false
+      },
+      {
+        "min": {
+          "_id": -4611686018427387904
+        },
+        "max": {
+          "_id": -4611686018427387902
+        },
+        "shard": "sis-shard-b",
+        "jumbo": false
+      },
+      {
+        "min": {
+          "_id": -4611686018427387902
+        },
+        "max": {
+          "_id": 0
+        },
+        "shard": "sis-shard-b",
+        "jumbo": false
+      },
+      {
+        "min": {
+          "_id": 0
+        },
+        "max": {
+          "_id": 4611686018427387902
+        },
+        "shard": "sis-shard-a",
+        "jumbo": false
+      },
+      {
+        "min": {
+          "_id": 4611686018427387902
+        },
+        "max": {
+          "_id": 4611686018427387904
+        },
+        "shard": "sis-shard-a",
+        "jumbo": false
+      },
+      {
+        "min": {
+          "_id": 4611686018427387904
+        },
+        "max": {
+          "_id": "+inf"
+        },
+        "shard": "sis-shard-a",
+        "jumbo": false
+      }
+    ],
+    "distribution_after_insert": {
+      "namespace": "sis_verify.sharded_records",
+      "total_documents": 500,
+      "shards": {
+        "sis-shard-a": {
+          "documents": 249,
+          "chunks": 3
+        },
+        "sis-shard-b": {
+          "documents": 251,
+          "chunks": 3
+        }
+      }
+    }
+  },
+  "chunk_migration": {
+    "moved": {
+      "moved_bounds": {
+        "min": {
+          "_id": 0
+        },
+        "max": {
+          "_id": 4611686018427387902
+        }
+      },
+      "from_shard": "sis-shard-a",
+      "to_shard": "sis-shard-b"
+    },
+    "distribution_before": {
+      "sis-shard-a": {
+        "documents": 249,
+        "chunks": 3
+      },
+      "sis-shard-b": {
+        "documents": 251,
+        "chunks": 3
+      }
+    },
+    "distribution_after": {
+      "sis-shard-a": {
+        "documents": 129,
+        "chunks": 2
+      },
+      "sis-shard-b": {
+        "documents": 371,
+        "chunks": 4
+      }
+    },
+    "records_checked": 500,
+    "records_readable": 500,
+    "no_data_lost": true
+  },
+  "rebalance": {
+    "moves": [
+      {
+        "moved_bounds": {
+          "min": {
+            "_id": "-inf"
+          },
+          "max": {
+            "_id": -4611686018427387904
+          }
+        },
+        "from_shard": "sis-shard-b",
+        "to_shard": "sis-shard-a"
+      }
+    ],
+    "distribution": {
+      "namespace": "sis_verify.sharded_records",
+      "total_documents": 500,
+      "shards": {
+        "sis-shard-a": {
+          "documents": 256,
+          "chunks": 3
+        },
+        "sis-shard-b": {
+          "documents": 244,
+          "chunks": 3
+        }
+      }
+    }
+  },
+  "crawler": {
+    "seed": "https://www.iana.org/",
+    "robots": {
+      "url": "https://www.iana.org/robots.txt",
+      "outcome": "parsed",
+      "crawl_delay": null
+    },
+    "politeness_seconds": 0.5,
+    "first_run": {
+      "pages_crawled": 5,
+      "seconds": 2.69,
+      "errors": [
+        {
+          "url": "https://www.iana.org/domains/root/db",
+          "error": "page exceeded 1 MB limit"
+        }
+      ],
+      "titles": [
+        "Internet Assigned Numbers Authority",
+        "About us",
+        "Domain Name Services",
+        "Root Zone Management",
+        "Intergovernmental Treaty (.INT) Domains"
+      ]
+    },
+    "second_run": {
+      "pages_crawled": 3,
+      "resumed_from_frontier": 5,
+      "urls_overlapping_first_run": 0
+    },
+    "store": {
+      "pages_stored": 8,
+      "errors_stored": 13,
+      "frontier_pending": 50,
+      "runs_recorded": 12,
+      "last_run": {
+        "seed": "https://www.iana.org/",
+        "pages_crawled": 3,
+        "errors": 12,
+        "elapsed_ms": 7149.86,
+        "politeness_seconds": 0.5,
+        "robots_outcome": "parsed",
+        "finished_at": "2026-10-21T09:52:33.254000"
+      }
+    },
+    "dedupe_proven": true
+  }
+}

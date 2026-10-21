@@ -76,7 +76,8 @@ def test_shard_store_and_ring_endpoints():
         get = client.get("/system-design/sharded-records/student-42")
         assert get.status_code == 200
         assert get.json()["value"]["credits"] == 20
-        assert client.get("/system-design/sharded-records").json()["total_records"] >= 1
+        distribution = client.get("/system-design/sharded-records").json()["distribution"]
+        assert distribution["total_documents"] >= 1
 
 def test_drop_releases_seat_exactly_once():
     with TestClient(app) as client:

@@ -16,7 +16,7 @@ Conditional atomic update + transaction + unique constraints + idempotency key. 
 Auth demo, profile, attendance uniqueness, marks bounds, timetable room conflict, notifications, drop releasing one seat exactly once.
 
 ## Slide 6 — Eight required system-design components (90 s)
-Rate limiter, sharding simulation, consistent hashing, TTL key-value cache, unique IDs, URL shortener, bounded crawler, autocomplete. Explain one metric and one limitation per component.
+Rate limiter (Redis-backed), sharding (real two-shard MongoDB cluster), consistent hashing, Redis TTL key-value cache, unique IDs, URL shortener, bounded crawler, autocomplete. Explain one metric and one limitation per component.
 
 ## Slide 7 — Workloads and results (90 s)
 Separate course search, profile reads, student writes and autocomplete runs. Report users, duration, throughput, p50/p95, errors and dataset. Distinguish smoke tests from repeatable baseline runs.

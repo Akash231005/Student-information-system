@@ -10,9 +10,11 @@ Build a student information system that supports student accounts and profiles, 
 
 ## 3. Architecture
 
-Browser dashboard and Locust workloads call a FastAPI modular monolith. The API uses PostgreSQL for academic records. The process-local token bucket limits request bursts; the TTL/LRU cache serves autocomplete; separate experimental endpoints demonstrate consistent hashing, in-memory sharding, ID generation, short links, crawling and metrics.
+Browser dashboard and Locust workloads call a FastAPI modular monolith. PostgreSQL is authoritative for academic records. Shared mutable state lives in real services rather than in the API process: a Redis 7 token bucket limits request bursts and a Redis TTL cache serves autocomplete, so several app processes share one allowance and one cache; a MongoDB 7 sharded cluster (one `mongos` router, a config-server replica set and two shard replica sets) holds sharded records and the crawler's durable frontier.
 
-The baseline deploys one application and one PostgreSQL database. In-memory components are isolated experiments, not production-grade distributed services.
+The app refuses to start if Redis or `mongos` is unreachable, and `/health` returns HTTP 503 naming the failed store. There is no in-memory fallback: a silent fallback would hide exactly the failure a multi-process deployment is supposed to expose.
+
+The baseline still deploys one application host. Redis and MongoDB are single-node, unreplicated lab deployments: their state is shared, their availability is not.
 
 ## 4. Data model
 
@@ -40,14 +42,14 @@ Dropping an enrollment transitions ENROLLED to DROPPED once and decrements the c
 
 | Component | Prototype implementation | Evaluation metric | Important limitation |
 |---|---|---|---|
-| Rate limiter | Thread-safe process-local token bucket middleware | accepted/rejected requests; 429 rate | Per process, not shared across workers |
-| Sharding | In-memory key/value records assigned to ring nodes | record count per shard; key readability | Does not shard PostgreSQL tables |
-| Consistent hashing | SHA-256 ring with virtual nodes | key movement after node changes | Ring changes do not migrate or replicate records |
-| Key-value store | Bounded TTL/LRU cache for autocomplete | hit/miss rate and latency | Process-local; TTL-based invalidation |
-| Unique ID generator | 64-bit time/worker/sequence generator | IDs/s, uniqueness in batch | Worker coordination and clock policy needed across hosts |
+| Rate limiter | Token bucket in Redis; one Lua script performs the whole read-modify-write | accepted/rejected requests; 429 rate; cross-process spend | Single Redis node; an outage returns 503, never unlimited traffic |
+| Sharding | Real `mongos` router + config-server replica set + two shard replica sets; collection sharded on `{_id: "hashed"}` | documents and chunks per shard; `explain` owner; real `moveChunk` | Two shards on one host; single-member replica sets |
+| Consistent hashing | SHA-256 ring with 100 virtual nodes, built from the live shard set | key movement after node changes; ring answer vs router answer | Ring changes do not move data; `moveChunk` does |
+| Key-value store | Redis `SETEX` TTL cache for autocomplete, `SCAN`-based prefix invalidation | hit/miss rate, TTL, latency | 128 MB `allkeys-lru`; eviction can beat the TTL |
+| Unique ID generator | 64-bit time/worker/sequence generator; worker slot claimed with `INCR mod 1024` in Redis | IDs/s, uniqueness in batch | Slots are leased, never released; no external clock authority |
 | URL shortener | Random short codes persisted in PostgreSQL and HTTP redirects | creation and redirect latency | No expiry, analytics, or abuse policy yet |
-| Web crawler | Bounded same-host HTTPS crawler | pages/sec, errors, frontier size | Small educational crawler, not distributed |
-| Autocomplete | Prefix search over course code/title plus TTL cache | latency, top-k relevance | No ranking or typo tolerance |
+| Web crawler | robots.txt (RFC 9309) + `Crawl-delay`, 429/503 retry with `Retry-After`, durable frontier in MongoDB | pages crawled, errors, frontier size, refetch count on resume | Same-host, serial, single process; not a distributed crawler |
+| Autocomplete | Prefix search over course code/title plus Redis TTL cache | latency, top-k relevance | No ranking or typo tolerance |
 
 ## 7. API surface
 
@@ -297,3 +299,77 @@ The new A3 landscape poster combines the strongest elements from the supplied re
 It reports the latest verified values: 23/23 PostgreSQL-backed automated tests; 24/24 Postman/Newman assertions across 13 requests; 185 JMeter baseline samples with zero errors, 3.91 ms mean and 8 ms p95; and a separate unpaced overload run in which 83.87% of requests returned HTTP 429. Resource samples are labelled as local process/container observations. Baseline and overload runs are deliberately separated, and the poster explicitly says these measurements are not production-capacity certification.
 
 Source: `poster-editorial.html`; builder: `scripts/build_poster.mjs`; preview: `poster-editorial-preview.png`; final: `SIS-System-Design-Poster.pdf`. The poster was exported as one A3 landscape page and checked for missing images and clipped panel content.
+
+## 20. Real infrastructure migration — 21 October 2026
+
+Every component that previously held state in the API process now holds it in a real service. The change
+is deliberate and irreversible in the code: the in-memory classes were deleted, so the application cannot
+silently fall back to local dictionaries.
+
+### What was replaced
+
+| Before | After |
+|---|---|
+| `TokenBucketRateLimiter` (per-process dict) | `RedisTokenBucket` — the whole read-modify-write runs inside one Lua script, so two processes cannot spend the same token |
+| `TTLKeyValueStore` (per-process dict + lock) | `RedisTTLStore` — `SETEX` with `SCAN`-based prefix invalidation |
+| Fixed worker ID for the ID generator | `claim_worker_id()` — `INCR mod 1024` in Redis, so concurrently started processes get distinct slots |
+| In-memory shard dictionaries + ring-only routing | Real MongoDB sharded cluster; `moveChunk` with explicit bounds; ring answer returned beside the router's `explain` answer |
+| Crawler with a mocked-network test only | robots.txt (RFC 9309), per-host `Crawl-delay`, 429/503 retry with `Retry-After`, gzip, cross-host redirect refusal, durable frontier/pages in MongoDB, requested-URL deduplication |
+
+### Topology
+
+`mongos` on 27017 routes to a config-server replica set (`sis-cfg`, 27019) and two shard replica sets
+(`sis-shard-a` 27021, `sis-shard-b` 27022). Each `mongod` runs with `--wiredTigerCacheSizeGB 0.25`, which
+is the server minimum — the whole cluster is sized for an 8 GB laptop, not a server. Rootless podman on
+this host cannot publish ports (`pasta` backend failure), so every container uses `--network=host` and
+binds loopback. `scripts/start_stack.sh` creates, starts, initialises and reports the cluster
+idempotently.
+
+The collection `sharded_records` is sharded on `{_id: "hashed"}`. That choice makes the record key the
+shard key, which is what lets a single lookup be answered by exactly one shard. Two consequences were
+discovered during implementation and are recorded because they cost debugging time: MongoDB 6+ keys
+`config.chunks` by collection `uuid` rather than `ns`, and a hashed shard key cannot be moved with a
+range `find` — `moveChunk` needs explicit bounds.
+
+### A design decision worth stating
+
+The consistent-hash ring and `mongos` are both real and they can disagree. Rather than deleting the ring
+(which is the component under study) or trusting it (which would be wrong), `GET
+/system-design/route/{key}` returns both answers. The router is authoritative for reads and writes; the
+ring is the routing design being examined, and an experiment endpoint adds a node and reports the moved-key
+fraction. Disagreement is visible rather than averaged away.
+
+### Measured evidence
+
+`sis-app/scripts/verify_stack.py` executes each claim against the live containers and writes
+`sis-app/docs/verification/stack_verification.json`. The recorded run:
+
+| Check | Result |
+|---|---|
+| Stores reachable | Redis 7.4.11 · MongoDB 7.0.45 through `mongos` (`isdbgrid: true`) · PostgreSQL 17 |
+| Rate limiter shared across processes | capacity 3 spent entirely by worker A at one timestamp; worker B refused (`shared_bucket: true`) |
+| Cache TTL | key present with TTL 1 s; `None` after expiry |
+| ID worker slots | two claims → slots 1 and 2; 1,000 generated IDs, 1,000 unique |
+| Sharded records | 500 records → 249 / 251 documents, 3 chunks per shard |
+| `moveChunk` | 129 / 371 documents, 2 / 4 chunks; all 500 keys still readable; no data lost |
+| Rebalance | 256 / 244 documents, 3 chunks per shard |
+| Live crawl | `www.iana.org`: robots.txt parsed, 5 pages stored, 1 page rejected at the 1 MB cap |
+| Crawl resume | second run took 5 URLs from the persisted frontier and refetched 0 |
+
+The automated suite reports **37 passed, 2 skipped**. The skips are deliberate: the PostgreSQL concurrency
+race test requires an explicitly provided `DATABASE_URL`, and the live crawl is opt-in
+(`SIS_LIVE_CRAWL=1`) so the suite never hits a third-party site by default. `ruff check` passes.
+
+### What the migration does not buy
+
+- **Availability.** Redis and the MongoDB members are single nodes on one host, unreplicated. Shared state
+  is proven; surviving the loss of that host is not. There is no failover, no backup and no ops story.
+- **A fresh cache benchmark.** The Locust cache-on/cache-off comparison in section 12 was measured against
+  the in-process LRU cache, which no longer exists, and `SIS_CACHE_ENABLED` has been removed. The Redis
+  cache is verified functionally (cross-process sharing, TTL, prefix invalidation) but has not been
+  re-benchmarked. The old numbers are retained as a record of what was measured, not as a current claim.
+- **Distributed crawling.** The crawler remains same-host, serial and single-process. Serial access is
+  deliberate: intra-host parallelism is exactly what `Crawl-delay` exists to prevent.
+- **SSRF hardening.** Public-HTTPS-only, same-host, no-credentials, private-address rejection and
+  cross-host redirect refusal are enforced, but DNS rebinding is still not defended against. It must not
+  be exposed as a public arbitrary-URL fetch service.

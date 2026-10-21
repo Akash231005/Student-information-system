@@ -35,10 +35,12 @@ The saved load runs are single-run local measurements using 10 users for 20 seco
 5. Do not use real student records or expose the prototype publicly.
 
 ## Explicit limitations to state
-- Rate limiter, cache, ID generator and synthetic shard state are process-local.
-- Consistent-hash ring changes do not migrate or replicate the synthetic shard records.
-- The prototype does not shard PostgreSQL or claim multi-node production scalability.
-- Token revocation/refresh, production identity integration, shared Redis coordination and a hardened crawler remain future work.
+- Rate limiting, the autocomplete cache and ID worker slots are backed by one unreplicated Redis node; state is shared across app workers, availability is not.
+- Sharded records live in a real two-shard MongoDB cluster (`mongos` + config server). Chunk movement is real; host-level failover is not.
+- The consistent-hash ring routes keys but never moves data — `moveChunk` does.
+- The prototype does not shard PostgreSQL and does not claim production scalability.
+- The crawler honours robots.txt and `Crawl-delay` against the live network, but is same-host, serial, and not hardened against DNS rebinding.
+- Token revocation/refresh and production identity integration remain future work.
 - Resource sampling is incomplete for making peak CPU/memory claims.
 
 

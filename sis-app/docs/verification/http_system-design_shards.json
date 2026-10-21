@@ -1,0 +1,1 @@
+{"router":"127.0.0.1:27017","is_mongos":true,"server_version":"7.0.45","shards":["sis-shard-a","sis-shard-b"],"shard_key":{"_id":"hashed"},"chunks":6,"balancer_mode":"full"}

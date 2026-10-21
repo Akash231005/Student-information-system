@@ -12,7 +12,10 @@ def setup_function():
 
 def test_health():
     with TestClient(app) as client:
-        assert client.get("/health").json() == {"status": "ok"}
+        body = client.get("/health").json()
+        assert body["status"] == "ok"
+        assert body["stores"]["redis"]["version"]
+        assert body["stores"]["mongodb"]["is_mongos"] is True
 
 
 def test_enrollment_happy_path_and_capacity():

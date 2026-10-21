@@ -1,0 +1,1 @@
+{"distribution":{"namespace":"sis.sharded_records","total_documents":202,"shards":{"sis-shard-a":{"documents":60,"chunks":2},"sis-shard-b":{"documents":142,"chunks":4}}},"ring_prediction":{"sis-shard-b":103,"sis-shard-a":99},"note":"distribution counts come from the cluster (collStats plus config.chunks); ring_prediction is what the application ring would have chosen."}

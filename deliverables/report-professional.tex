@@ -117,7 +117,7 @@ Orbit SIS was developed as a local full-stack prototype for student and staff wo
 \end{enumerate}
 
 \section{Scope and non-goals}
-The verification covers a local prototype and synthetic records. It does not certify production security, high availability, disaster recovery, multi-region behavior, or production throughput. Cache, rate limiter, hash ring, and telemetry experiments are process-local. The crawler's public-network behavior was not verified because DNS/network reachability was unavailable in the recorded environment.
+The verification covers a local prototype and synthetic records. It does not certify production security, high availability, disaster recovery, multi-region behavior, or production throughput. Rate limiting, caching and sharded records are backed by real services (Redis 7 and a two-shard MongoDB cluster), but each of those services is a single node on one host: their state is shared between API workers, their availability is not. The crawler was verified against the live public network and honours robots.txt and \texttt{Crawl-delay}.
 
 \chapter{Architecture and data model}
 \section{Runtime architecture}
@@ -145,7 +145,7 @@ Academic records & Attendance, assessment, grades, timetable, and notifications.
 \end{table}
 
 \section{Consistency boundary}
-The cache, rate limiter, hash ring, and telemetry components demonstrate mechanisms in a single process. Their state is not coordinated across API workers. They must not be treated as authoritative for academic state. PostgreSQL constraints and transactional updates protect enrollment; a cache hit or routing decision must never determine whether a seat exists.
+The cache and the rate limiter are backed by Redis, and their state is coordinated across API workers: the token bucket's read-modify-write is a single Lua script, and the cache is a server-side \texttt{SETEX} entry. Sharded records live behind a \texttt{mongos} router that owns chunk placement. None of these is authoritative for academic state. PostgreSQL constraints and transactional updates protect enrollment; a cache hit or routing decision must never determine whether a seat exists.
 
 \chapter{Transactional enrollment correctness}
 \section{Invariant}
@@ -189,11 +189,12 @@ A second test submitted two simultaneous enrollment attempts for the same studen
 \begin{tabularx}{\linewidth}{@{}p{0.24\linewidth}XX@{}}\toprule
 \textbf{Component} & \textbf{Demonstrated behavior} & \textbf{Boundary and next step} \\midrule
 PostgreSQL & Persistent academic state, conditional seat reservation, uniqueness constraints. & Add backup/restore drills, connection-pool tuning, and operational monitoring. \\
-TTL/LRU cache & Process-local autocomplete reuse. & Not shared across instances; use a shared cache if deployment requires it. \\
-Token-bucket limiter & Process-local burst control. & Limits are not coordinated across workers; validate quotas against legitimate traffic. \\
-Consistent hash ring & Virtual-node routing experiment. & Does not migrate or replicate data; it is a routing demonstration. \\
-Telemetry & In-memory request counts and latency samples. & Resets on restart; production monitoring needs persistent metrics and dashboards. \\
-Crawler & Bounded same-host crawler logic. & Public-network behavior was not verified; review SSRF and DNS-pinning risks before external use. \\
+TTL cache in Redis & Autocomplete reuse shared by every API worker; server-side expiry. & A single unreplicated Redis node with a 128 MB \texttt{allkeys-lru} cap; an entry can be evicted before its TTL. \\
+Token-bucket limiter in Redis & Burst control whose counters are shared by every API worker. & One Lua script performs the whole read-modify-write, so workers cannot double-spend; a Redis outage degrades to HTTP 503, never to unlimited traffic. \\
+Consistent hash ring & Virtual-node routing over the live shard set, reported beside the router's own answer. & It routes only; it never moves or replicates data. \\
+Sharded records in MongoDB & \texttt{mongos} router, config-server replica set, two shard replica sets; collection sharded on \texttt{\_id: hashed}. & Two shards on one host with single-member replica sets; real \texttt{moveChunk} and rebalance are exposed, but no host-level failover. \\
+Telemetry & In-process request counters plus live Redis and cluster state. & Counters reset on restart; production monitoring needs persistent metrics and dashboards. \\
+Crawler & robots.txt (RFC 9309), \texttt{Crawl-delay} pacing, retry on 429/503, durable frontier in MongoDB. & Same-host and serial by design; DNS rebinding is not defended against, so it must not be a public arbitrary-URL fetch service. \\
 ID endpoint & Returns 64-bit identifiers as JSON strings; uniqueness is asserted before serialization. & Clients must treat IDs as opaque strings; a string response avoids JavaScript Number precision loss. \\bottomrule
 \end{tabularx}
 \end{table}
@@ -298,8 +299,8 @@ For a coursework system with tightly related academic records, a modular monolit
 Microservices for each academic domain & Independent deployment and scaling & Adds service discovery, network failures, distributed tracing, and cross-service consistency. Revisit only with clear ownership and independent scaling needs. \\
 Cache as authority for seats & Low-latency reads & Cache state can be stale and does not provide the required transactional invariant. Keep the database authoritative. \\
 Application-only capacity check & Simple endpoint code & Check-then-write races under concurrent requests. Use a conditional write and transaction. \\
-Distributed cache and rate-limit service & Shared state across API workers & Useful for multi-instance deployment, but current experiments are process-local. Add only with explicit deployment requirements and integration tests. \\
-Database sharding now & Potential horizontal data distribution & The project has no measured database bottleneck or implemented migration/replication path. Hash-ring routing alone is not sharding. \\
+Distributed cache and rate-limit service & Shared state across API workers & \textbf{Implemented} after the first edition: Redis holds the token buckets, the autocomplete cache and the ID worker slots. Revisit with Redis Cluster or a replicated deployment if availability, not sharing, becomes the requirement. \\
+Database sharding & Horizontal data distribution and observable chunk placement & \textbf{Implemented} after the first edition: a real two-shard MongoDB cluster with \texttt{mongos}, hashed shard key, \texttt{moveChunk} and rebalance. Academic records remain in PostgreSQL; no measured PostgreSQL bottleneck justified sharding them. \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -308,7 +309,7 @@ Database sharding now & Potential horizontal data distribution & The project has
 The primary failure to prevent is not a slow response; it is a false academic state, such as two students being assigned one seat or a counter claiming a seat is occupied when no enrollment exists. The design therefore prioritizes transactional correctness over using an eventually consistent cache for enrollment writes. Read optimization can be introduced around that boundary only if invalidation and stale-read behavior are explicitly defined.
 
 \section{Operational boundaries of auxiliary components}
-The TTL/LRU cache, token-bucket limiter, hash-ring router, and telemetry collector are in-process experiments. A process restart clears their state, and separate workers may maintain different views. The hash ring demonstrates key-to-node assignment; it does not move database rows, replicate data, rebalance storage, or recover failed nodes. The crawler is additionally an outbound-network boundary and must be reviewed for private-address access, DNS rebinding, redirects, request budgets, and response-size limits before external use.
+The rate limiter, cache and shard router are backed by services that outlive the API process, so separate workers share one allowance, one cache and one placement authority rather than diverging. Their availability boundaries remain: Redis and the MongoDB members are single nodes on one host, so a restart of the API is survivable but a failure of the host is not. The hash ring demonstrates key-to-node assignment; it does not move database rows, replicate data, rebalance storage, or recover failed nodes — \texttt{moveChunk} is the operation that moves data. The crawler is additionally an outbound-network boundary and must be reviewed for private-address access, DNS rebinding, redirects, request budgets, and response-size limits before external use.
 
 \chapter{Test strategy, reproducibility, and evidence quality}
 \section{Layered verification strategy}
@@ -408,7 +409,7 @@ Ruff static checks & Passed & Application, tests, scripts, and migrations. \\
 \label{fig:jmeter-overload}
 \end{figure}
 
-The JMeter plan is read-only and does not prove database transaction correctness; the PostgreSQL concurrency tests establish the specific enrollment invariants. The rate limiter and telemetry are process-local, so behavior under multiple workers is not represented. The first ID uniqueness assertion exposed JavaScript precision loss when 64-bit IDs were emitted as JSON numbers. The API now emits IDs as strings and the regression test asserts the string contract. This fixes the API representation issue but does not turn the local ID generator into a distributed, multi-worker generator.
+The JMeter plan is read-only and does not prove database transaction correctness; the PostgreSQL concurrency tests establish the specific enrollment invariants. The rate limiter's counters now live in Redis and are shared by every worker, so multi-worker quota behaviour is represented in the stack verification below rather than absent. The first ID uniqueness assertion exposed JavaScript precision loss when 64-bit IDs were emitted as JSON numbers. The API now emits IDs as strings and the regression test asserts the string contract. This fixes the API representation issue; worker slots are now claimed in Redis, but the generator is still not a clock-synchronised distributed ID service.
 
 \section{Historical local measurements}
 The 19 October Locust runs used 10 users, a spawn rate of two users per second, and a 20-second limit. These are single-run local observations, not fresh measurements from the 20 October verification and not production capacity claims.
@@ -420,8 +421,8 @@ The 19 October Locust runs used 10 users, a spawn rate of two users per second, 
 Course search/list/offering mix & 681 & 35.82 & 10 & 0 \\
 Authenticated profile and academic reads & 669 & 35.27 & 12 & 0 \\
 Student account registration writes & 370 & 19.47 & 83 & 0 \\
-Autocomplete, cache enabled & 675 & 35.55 & 5 & 0 \\
-Autocomplete, cache disabled & 659 & 34.68 & 10 & 0 \\
+Autocomplete, cache enabled (pre-Redis) & 675 & 35.55 & 5 & 0 \\
+Autocomplete, cache disabled (pre-Redis) & 659 & 34.68 & 10 & 0 \\
 Course-search overload, limiter enabled & 676 & 35.61 & 10 & 243 HTTP 429 \\
 \bottomrule\end{tabularx}
 \end{table}
@@ -430,12 +431,33 @@ The cache-enabled autocomplete run reported mean latency of 2.88 ms versus 5.85 
 
 The overload run returned 243 HTTP 429 responses out of 676 requests (35.95\%). This demonstrates admission control under the tested offered load, but also indicates that the quota needs tuning against legitimate traffic and service latency. A separate sample observed approximately 7.4\% average CPU of one logical CPU and 90,660 KiB RSS for the API process; this was not total host or database utilization.
 
+\section{Stack verification after the infrastructure migration}
+A later run replaced every in-process store with a real service and measured the result. \texttt{scripts/verify\_stack.py} executes each claim against the live containers and writes the raw output to \texttt{stack\_verification.json}.
+\begin{table}[htbp]
+\centering\small
+\caption{Measured behaviour against Redis 7 and a two-shard MongoDB 7 cluster (21 October 2026)}\label{tab:stackverify}
+\begin{tabularx}{\linewidth}{@{}p{0.3\linewidth}p{0.26\linewidth}X@{}}\toprule
+\textbf{Check} & \textbf{Observed} & \textbf{What it establishes} \\midrule
+Rate limiter across processes & capacity 3 spent by worker A; worker B refused & One allowance is shared, not duplicated per process \\
+Cache TTL & TTL 1 s, then \texttt{None} & Expiry is server-side, not a Python dict \\
+ID worker slots & slots 1 and 2; 1,000 IDs, 1,000 unique & Concurrent processes cannot claim the same slot \\
+Shard distribution & 249 / 251 documents, 3 chunks each & \texttt{mongos} places records across both shards \\
+\texttt{moveChunk} & 129 / 371, all 500 keys readable & Chunk migration moves real data without loss \\
+Rebalance & 256 / 244, 3 chunks each & The balancer restores an even split \\
+Live crawl & \texttt{www.iana.org}: robots parsed, 5 pages stored & The network path works against a real host \\
+Crawl resume & 5 URLs taken from the persisted frontier, 0 refetched & The frontier is durable and deduplication is real \\bottomrule
+\end{tabularx}
+\end{table}
+
+The automated suite reports 37 passed and 2 skipped. Both skips are deliberate: the PostgreSQL concurrency race requires an explicitly provided \texttt{DATABASE\_URL}, and the live crawl is opt-in so the suite never contacts a third-party site by default.
+
 \section{Limitations}
 \begin{itemize}
 \item No production deployment, availability, security, or capacity certification was performed.
-\item Cache, rate limiter, and telemetry state are process-local, not coordinated across workers.
-\item The hash-ring experiment does not implement data migration, replication, or failover.
-\item The public crawler was not verified against the live network.
+\item Redis and the MongoDB members are single nodes on one host: shared state is verified, failover is not.
+\item The consistent-hash ring is a startup snapshot of the shard set and moves no data; \texttt{mongos} owns placement.
+\item The crawler now works against the live network but remains same-host and serial; DNS rebinding is not defended against.
+\item The cache-on/cache-off Locust rows predate the Redis migration and were not re-measured; treat them as historical comparison only.
 \item Historical Locust results are short single runs and lack repeated confidence intervals.
 \item The API now serializes 64-bit identifiers as JSON strings to preserve exactness in JavaScript clients; older clients expecting numeric IDs must be updated.
 \end{itemize}
@@ -457,11 +479,10 @@ The strongest verified design property is the enrollment consistency boundary: t
 Before treating the prototype as a deployable service, the following work remains:
 \begin{enumerate}
 \item Add token revocation/refresh and a production identity provider; expand authentication and rate-limit abuse tests.
-\item Move cache and rate-limit state to a shared backend if the application runs across multiple workers.
-\item Repeat load tests over longer durations and record API, database, and load-generator resource time series.
-\item Add backup/restore and failure-recovery exercises before making availability claims.
-\item Implement actual data migration and replication before describing the hash-ring experiment as sharding.
-\item Review crawler DNS-pinning and SSRF protections in a network-enabled test environment.
+\item Replicate Redis and the MongoDB members, and add failure-recovery exercises, before making availability claims.
+\item Repeat load tests over longer durations and record API, database, and load-generator resource time series; re-measure the Redis cache against the historical numbers.
+\item Add backup/restore drills before claiming operational readiness.
+\item Review crawler DNS-pinning and SSRF protections before exposing it beyond coursework.
 \item Add contract tests to ensure all API consumers preserve ID strings and do not coerce them to JavaScript Number.
 \end{enumerate}
 

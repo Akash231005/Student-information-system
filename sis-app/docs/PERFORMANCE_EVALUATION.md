@@ -17,10 +17,17 @@ dedicated load generator and target-like deployment before making scale guarante
 
 Numbers below are from the saved Locust aggregate CSVs in `results/verified-20261019-*`.
 Response times are milliseconds; throughput is requests per second.
+
+> **These runs predate the Redis migration.** The cache compared here was the in-process LRU/TTL store
+> that has since been replaced by Redis, and the `SIS_CACHE_ENABLED` switch no longer exists. The table
+> is kept because it is what was measured; the Redis-backed cache is verified functionally (shared
+> across processes, TTL expiry, prefix invalidation) but has **not** been re-benchmarked here. Re-run
+> the workloads before quoting a cache speed-up for the current build.
+
 | Workload | Requests | Failures | Median | Mean | p95 | Throughput |
 |---|---:|---:|---:|---:|---:|---:|
-| Autocomplete, cache disabled | 659 | 0 | 5 | 5.85 | 10 | 34.68 req/s |
-| Autocomplete, cache enabled | 675 | 0 | 2 | 2.88 | 5 | 35.55 req/s |
+| Autocomplete, cache disabled (in-process LRU, pre-Redis) | 659 | 0 | 5 | 5.85 | 10 | 34.68 req/s |
+| Autocomplete, cache enabled (in-process LRU, pre-Redis) | 675 | 0 | 2 | 2.88 | 5 | 35.55 req/s |
 | Course search + offering list | 681 | 0 | 5 | 5.65 | 10 | 35.82 req/s |
 | Authenticated profile/grades/enrollments/timetable reads | 669 | 0 | 5 | 7.43 | 12 | 35.27 req/s |
 | Student registration writes | 370 | 0 | 60 | 63.63 | 83 | 19.47 req/s |
@@ -52,18 +59,38 @@ model.
 - Duplicate-enrollment race test: concurrent requests for the same student/offering leave exactly one
   active enrollment and one counter increment.
 - Drop/re-enroll test: dropping decrements the seat count once; the student can later enroll again.
-- Consistent-hash experiment reports the fraction of synthetic keys that move after adding a node.
-  This is routing simulation only; the prototype does not migrate or replicate actual shard data.
-- Crawler parsing/frontier behavior is tested with a mocked HTTPS response. A live crawl could not be
-  verified here because DNS resolution was unavailable; do not present mock throughput as live crawl throughput.
+- Consistent-hash experiment reports the fraction of keys that change owner after adding a node. That is
+  routing math over the live shard set. Data movement is a separate, real operation: `moveChunk` with
+  explicit bounds moved a chunk and all 500 checked keys stayed readable
+  (`docs/verification/stack_verification.json`).
+- Sharded-cluster check: 500 records were inserted through `mongos` and split 249/251 across two shards;
+  after one explicit chunk migration the split was 129/371, and after rebalancing 256/244.
+- Crawler behaviour is covered twice: scripted-response tests for robots policy, pacing, retry and
+  dedupe, and an opt-in live crawl (`SIS_LIVE_CRAWL=1`) that fetched real pages from `www.iana.org`
+  over the public internet. Live-crawl wall time is dominated by politeness delay and is not a
+  throughput measurement of the crawler itself.
 ## Reproduction
 
-Start PostgreSQL and seed the deterministic synthetic dataset, then start two isolated app instances:
+Bring up the state stores first — the API exits at startup without Redis and `mongos`:
 
 ```bash
+bash scripts/start_stack.sh
 uv run python -m scripts.generate_dataset --students 1000 --courses 100 --offerings-per-course 2
-SIS_RATE_LIMIT_ENABLED=false SIS_CACHE_ENABLED=false uv run uvicorn app.main:app --port 8001
-SIS_RATE_LIMIT_ENABLED=false SIS_CACHE_ENABLED=true uv run uvicorn app.main:app --port 8002
+```
+
+The cache no longer has an off switch, so the old cache-on/cache-off comparison cannot be repeated
+against this build without a code change. What *can* be repeated is the property the migration was for:
+two app processes share one rate-limit allowance and one cache. Start two instances and drive both:
+
+```bash
+uv run uvicorn app.main:app --port 8001 &
+uv run uvicorn app.main:app --port 8002 &
+```
+
+Then run the workloads against each port. A shared-quota check without Locust:
+
+```bash
+uv run python scripts/verify_stack.py   # proves the cross-process bucket before any load test
 ```
 
 In another terminal, run matching workloads for each condition:
