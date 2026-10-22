@@ -1,0 +1,397 @@
+# Presentation script — 10 minutes, live demo included
+
+**Thesis (the one sentence everything serves):**
+*Everyone here can show you the happy path. Ours is built to show you the failure path — and it
+refuses to lie about which one you are looking at.*
+
+**Why this wins the room:** your classmates will show a CRUD app with Redis and MongoDB in the
+diagram. You will show the same stack, then break it on purpose, then show it saying so. The judge
+remembers one thing an hour later; make it the Redis kill at 3:20.
+
+**Slot math:** 8:40 of content, 1:20 of buffer. Finishing early is a win, overrunning is not.
+
+---
+
+## 1. Pre-flight checklist
+
+### The night before
+- [ ] `./run.sh` from a cold machine state, and let it finish (it installs uv, starts 6 containers,
+      seeds 1,003 students / 103 courses / 201 offerings, starts the API).
+- [ ] `./stop.sh` — read the table out loud once. Every port closed, every process stopped.
+- [ ] `./run.sh` again. If this works twice, tomorrow works.
+- [ ] `./deliverables/demo/seat_race.sh` — one command, must print `201`, then `409`.
+- [ ] Charge laptop, pack the charger, screenshot every slide to PNG (projector insurance).
+
+### Ten minutes before you present
+- [ ] `./run.sh` (takes ~40s warm)
+- [ ] Browser tab 1: `http://127.0.0.1:8000/docs` — tab 2: `http://127.0.0.1:8000/`
+- [ ] Terminal: font size ≥ 18pt, no other tabs, `cd` to the repo root
+- [ ] Pre-type these three commands in shell history (↑×3 is the entire demo typing budget):
+      1. `podman stop sis-redis`
+      2. `curl -s -w ' [%{http_code}]\n' http://127.0.0.1:8000/courses`
+      3. `podman start sis-redis`
+- [ ] Close Slack. Turn off notifications. Silence the phone.
+- [ ] **Leave the system running.** Do not run `./stop.sh` before presenting.
+
+### If something is already broken when you walk up
+Say: *"The stack is deliberately checked, not assumed — give me twenty seconds."* Run `./run.sh`.
+It is idempotent and it tells you exactly what is missing. That is itself a talking point, not an
+apology.
+
+---
+
+## 2. Run of show
+
+| Time | Beat | Slide |
+|------|------|-------|
+| 0:00–0:25 | Hook: the happy path vs the failure path | 1–2 |
+| 0:25–1:20 | The three lies every prototype tells | 3 |
+| 1:20–2:20 | Architecture: three real stores, one guard | 4 |
+| 2:20–5:20 | **Live demo** (3 beats, 3 minutes) | 5–6 |
+| 5:20–6:40 | Correctness under fire (numbers) | 7 |
+| 6:40–7:50 | What this is not (honest limits) | 8 |
+| 7:50–8:40 | The principle + close | 9 |
+| 8:40–10:00 | Buffer / questions | — |
+
+---
+
+## 3. Slide by slide
+
+### Slide 1 — Title (0:00)
+**On screen**
+> **A Student Information System that refuses to lie**
+> every claim is a measurement, or it does not ship
+> *<your name> · SIS system design · <date>*
+
+**Say (word for word):**
+> "Every project in this room can show you the happy path. Ours is built to show you the failure
+> path. Ten minutes, three claims, and I will break the system in front of you to prove each one."
+
+### Slide 2 — The hook (0:15)
+**On screen**
+> **Everyone demos the happy path.**
+> **Ours demos the failure path.**
+
+**Say:**
+> "Here is what usually happens. The diagram says Redis. The code says `self.cache = {}`. The
+> diagram says sharded. The code says `hash(key) % 3`. Nobody is lying on purpose — the fallback
+> was convenient, and it never showed up in the demo."
+
+### Slide 3 — The three lies (0:25–1:20)
+**On screen**
+> **Three claims, and how each one dies**
+>
+> | Claim | How it dies |
+> |---|---|
+> | "Rate limited" | two replicas, two counters, double the limit |
+> | "Sharded" | one process, one dict, `% 3` |
+> | "Cached" | cache and truth in the same process, same lifetime |
+
+**Say:**
+> "We deleted all three. Not behind a flag, not behind an env variable — deleted. What is left is
+> one rule: **if a component is down, the system refuses to answer.** It does not fall back to a
+> per-process limiter, because that would silently double your quota. It does not fall back to an
+> in-memory shard map, because that would be a drawing, not a database. Refusing is the feature."
+
+### Slide 4 — Architecture (1:20–2:20)
+**On screen**
+> *(the hand-drawn SVG: three tiers, white cards on tinted bands, startup-guard banner, measured
+> numbers in the footer)*
+>
+> `FastAPI → PostgreSQL 17 · Redis 7.4 · MongoDB 7.0 (2 shards + config + mongos)`
+
+**Say:**
+> "PostgreSQL owns money-shaped invariants — seats, enrollments, transactions. Redis owns the three
+> things every process must agree on: the rate-limit bucket, the cache, and ID worker slots. MongoDB
+> is a real sharded cluster — a config server, two shard replica sets, and a mongos router. Six
+> containers, no embedded substitutes. The banner across the top is the startup guard: if Redis or
+> mongos is unreachable, the app does not finish booting."
+
+*Point at the footer:* "Every number on this diagram came out of the running system, not out of my
+head."
+
+### Slide 5 — Claim 1: it refuses to run on a lie (2:20, demo starts)
+**On screen**
+> **Claim 1 — the app refuses to run on a lie**
+>
+> ```
+> RuntimeError: Required state stores are not available:
+>   - Redis unreachable at redis://127.0.0.1:6399/0
+> ERROR: Application startup failed. Exiting.
+> ```
+>
+> *then, at runtime:* `503 {"store": "redis", "detail": "…cannot decide…"}`
+
+**Say (while switching to the terminal):**
+> "Watch what happens when I take Redis away at runtime. This is a live database, live containers,
+> nothing mocked."
+
+**DEMO BEAT A — the money shot (2:20–3:40)**
+
+```bash
+podman stop sis-redis
+curl -s -w ' [%{http_code}]\n' http://127.0.0.1:8000/courses
+```
+
+**Expected output (memorise the shape, not the words):**
+```
+{"status":"degraded","store":"redis","detail":"Redis is unavailable, so the shared rate limiter
+cannot decide. Serving the request anyway would silently disable the limit."} [503]
+```
+
+**Say:**
+> "503. Not a 500, not a quiet fallback — it names the store and it tells you *why* it cannot decide.
+> A per-process limiter would have answered 200 here and given every client a second quota. That is
+> the lie this system refuses to tell."
+
+```bash
+podman start sis-redis
+curl -s -w ' [%{http_code}]\n' http://127.0.0.1:8000/courses
+```
+
+**Say:**
+> "And recovery is the store coming back. I did not restart the app — because the app never pretended
+> it could do without it."
+
+*If you have a spare moment, `curl -s http://127.0.0.1:8000/health` and let the audience read the
+JSON: it reports the real Redis version and that it is talking to mongos, not a mongod.*
+
+### Slide 6 — Claim 2: ring vs mongos, in public (3:40–4:40)
+**On screen**
+> **Claim 2 — our own hash ring disagrees with the database, in public**
+>
+> `route/DEMO-KEY-1`: ring says `sis-shard-b`, mongos says `sis-shard-a`, `"agrees": false`
+>
+> `moveChunk`: moved `{_id: -inf … -2^62}` from `sis-shard-a` → `sis-shard-b`
+
+**DEMO BEAT B**
+
+```bash
+curl -s http://127.0.0.1:8000/system-design/route/DEMO-KEY-1
+```
+
+**Expected:**
+```
+{"key":"DEMO-KEY-1","ring_prediction":"sis-shard-b","actual_owner":"sis-shard-a",
+ "nodes":["sis-shard-a","sis-shard-b"],"agrees":false,...}
+```
+
+**Say:**
+> "Two answers, one page. The left one is the consistent-hashing ring from the lecture — 100 virtual
+> nodes, `hash % ring`. The right one is what mongos actually does with a hashed shard key. They
+> disagree. In most projects that disagreement is hidden behind a diagram; here the endpoint reports
+> both and a boolean that says `false`. We would rather be caught being wrong than be believed
+> falsely."
+
+*If it happens to return `"agrees": true` (the layout can shift when chunks move), do not skip it:*
+> "Today it agrees — and the point is not that I got lucky, it is that the system checks and tells
+> you which it is. A diagram can never do that."
+
+**DEMO BEAT C**
+
+```bash
+TOKEN=$(curl -s -X POST http://127.0.0.1:8000/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"staff@example.test","password":"sis-demo-2026"}' | python3 -c "import json,sys;print(json.load(sys.stdin)['access_token'])")
+curl -s -X POST http://127.0.0.1:8000/system-design/shards/move-chunk -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"to_shard":"sis-shard-b"}'
+```
+
+**Expected:**
+```
+{"moved_bounds":{"min":{"_id":"-inf"},"max":{"_id":-4611686018427387904}},
+ "from_shard":"sis-shard-a","to_shard":"sis-shard-b"}
+```
+
+**Say:**
+> "That is `moveChunk` against a real cluster. Data actually relocated between two replica sets. Run
+> it again with the other shard and it moves back. There is no in-memory map that could fake that —
+> and the numbers in the report came from this exact call: 129 documents and 2 chunks one way, 371
+> and 4 the other."
+
+### Slide 7 — Claim 3: correctness under fire (4:40–6:40)
+**On screen**
+> **Claim 3 — the invariants hold when things go wrong**
+>
+> **20 concurrent enrollments · 5 seats → 5 × `201`, 15 × `409`**, `enrolled_count = 5`, 5 rows
+> **2 workers, capacity 3 → worker A spends 3, worker B is refused**
+> **crawl resumed: 5 URLs off the persisted frontier, refetched 0**
+> **1,000 IDs from two workers → 1,000 unique**
+
+**DEMO BEAT D (optional, 30s — use it only if you are ahead of schedule)**
+
+```bash
+./deliverables/demo/seat_race.sh
+```
+
+**Expected:**
+```
+  offering N: capacity 1
+  student 1 -> HTTP 201  {"id":…,"status":"ENROLLED",…}
+  student 2 -> HTTP 409  {"detail":"Offering is full"}
+  seats actually taken: 1 of 1  (never 2)
+```
+
+**Say:**
+> "One seat, two students, the database decides. This is the same invariant the test suite proves at
+> scale: twenty concurrent requests for five seats — five succeed, fifteen get 409, the row count is
+> five. Not five-ish. Five. If you are showing a system where two people can hold the last seat, you
+> are one concurrent request away from a broken demo, and your test suite never told you."
+
+*Then, without pausing for applause:*
+> "The same rule everywhere: the rate limiter is one bucket in Redis shared by every process — worker
+> A spent all three tokens, worker B got nothing. The ID generator reserves a worker slot so two
+> processes cannot mint the same number; a thousand IDs, a thousand unique. The crawler persists its
+> frontier, so a second run took five URLs it had never fetched and refetched zero. Same principle
+> each time: **the thing that is shared lives in the store, not in the process.**"
+
+### Slide 8 — What this is not (6:40–7:50)
+**On screen**
+> **What this is not**
+>
+> - one host, one copy — no failover, no backup, no replication test
+> - Redis is volatile on purpose (`--save ''`) — restart resets the buckets
+> - the crawler is polite: 3 pages in 7.1s at 0.5s delay — throughput is not the claim
+> - load numbers are pre-migration; **we did not re-run them**, so we do not quote them
+> - the tests wipe the dev database — a real rough edge, not a hidden one
+
+**Say (word for word — do not soften this, it is what makes the rest credible):**
+> "Every one of those is a thing I could have hidden and did not. The load numbers from before the
+> migration are *stale*, because the storage layer changed underneath them. I could have shown you
+> the old graph. A graph you cannot reproduce is a story, not a measurement. So the honest column is
+> short, and it is the column I trust. The roadmap falls straight out of it: replication and a real
+> backup, an isolated test database, and a crawl budget that is a budget instead of an accident."
+
+### Slide 9 — Close (7:50–8:40)
+**On screen**
+> **A demo you cannot re-run is a story.**
+>
+> `./run.sh` — verifies the stack, starts six containers, seeds the data, starts the API
+> `./stop.sh` — stops it, then proves nothing is left running
+>
+> `github.com/sujith0613/sis-system-design`
+
+**Say (word for word):**
+> "Two commands. `./run.sh` checks the machine, installs what is missing, brings up the real stores,
+> seeds the data, and refuses to report success until `/health` is green. `./stop.sh` stops the API
+> and the containers, then prints a table proving every port is closed. That is the whole submission
+> discipline: if a claim is not measured, it is not in the slides; if a demo is not one command, it is
+> not repeatable.
+>
+> You can build this. The difference is not the stack — you all have the same stack. The difference
+> is deciding, on day one, that the failure path is the product."
+
+**Then stop talking.** Do not add "so, yeah…". Leave the slide up and invite questions.
+
+---
+
+## 4. If it goes wrong (say this, do not improvise)
+
+| Failure | Say | Do |
+|---|---|---|
+| `podman stop sis-redis` fails | "The store is already gone — even better." | Continue to the curl |
+| `curl` returns 200 instead of 503 | "Then the limiter did not notice — let me look." | `podman ps`, re-run `./run.sh`, come back |
+| `curl` returns 500 | "That is a bug I should have caught — it is answering, but not honestly." | Note it, move on, fix after |
+| Terminal dies / laptop dies | "The evidence is the recording, not the live box." | Switch to the saved screenshots |
+| `move-chunk` returns `409 chunk already lives on…` | "It is already there — that is the cluster disagreeing with my request, which is the point." | Try the other shard |
+| You are 2 minutes over at slide 8 | Cut the limits to one line: "single host, volatile Redis, stale load numbers — that is the whole honest list." | Go straight to slide 9 |
+| You are 2 minutes under | Run demo beat D (`seat_race.sh`), then take the Q&A sheet's "why not use X library" answer | — |
+
+---
+
+## 5. Q&A sheet
+
+**1. "Isn't this just PostgreSQL plus Redis plus MongoDB? Anyone can do that."**
+> "Yes — the stack is not the contribution, and pretending otherwise would be the first lie. The
+> contribution is that every integration claim is falsifiable. Most projects' Redis is a Python
+> dictionary with a different name, and you cannot tell from the outside. Here you can: stop the
+> container and the system tells you."
+
+**2. "Why did you write your own rate limiter instead of using a library?"**
+> "Forty lines of Lua to make the decrement atomic. A library would have worked, and it would also
+> have hidden the thing being examined: that one bucket is shared by two processes. The cost is real —
+> a library has had more eyes on it than my Lua script, and I would swap in a library for production."
+
+**3. "Why does your hash ring disagree with mongos?"**
+> "Because they are solving different problems. The ring is the textbook consistent-hashing I wanted
+> to examine: 100 virtual nodes, hash modulo the ring. mongos splits a hashed shard key into ranges
+> and tracks them in the config server. The disagreement is not a bug to hide; it is the lesson:
+> 'we sharded it' is a claim about the database, not about your hash function."
+
+**4. "How do you know you did not oversell the last seat?"**
+> "Twenty threads, one offering with capacity five. Five got 201, fifteen got 409, `enrolled_count`
+> is five, and the enrollment rows across all twenty students total five. Postgres row locks plus a
+> unique constraint, inside one transaction. The test asserts the counts, not the vibe."
+
+**5. "What happens in production if Redis dies?"**
+> "Requests that need a shared decision get 503 and the store is named. I chose availability last.
+> That is a real trade-off — a payment system might choose differently — but here the rate limit *is*
+> the claimed behaviour, so degrading to a per-process limit would make the claim false while the
+> system stayed up. I would rather be down and honest."
+
+**6. "What are your actual latency and throughput numbers?"**
+> "For the current storage layer: none, and I will not quote the pre-migration ones. The honest answer
+> is that the load test has to be re-run against Redis and the sharded cluster, and that is the next
+> task. What I can defend today is correctness under concurrency, which is measured."
+
+**7. "Where is idempotency implemented?"**
+> "Client-supplied key, unique constraint in Postgres, replay returns the same enrollment row — the
+> demo shows 201 twice with the same id. So a retried request after a timeout cannot double-book."
+
+**8. "Why two databases? Why not one?"**
+> "Shape and blast radius. Enrollment is money-shaped: it needs transactions and constraints, so
+> Postgres owns it. Catalog, crawl and sharded records are document-shaped and sharded by a hashed
+> key, so MongoDB owns them. Using one for both would mean either transactions in Mongo or sharding
+> in Postgres — both are possible, and neither was the point being demonstrated."
+
+**9. "Does this scale?"**
+> "This demonstrates the mechanisms that make scaling possible, not a scaled system: shared state in
+> stores, a stateless API, a sharded collection, a durable crawl frontier. Real scaling needs
+> replication, connection-pool tuning and measured p95 — see the honest-limits slide."
+
+**10. "What would you do with two more weeks?"**
+> "Three things, in order: replication and a backup/restore drill, an isolated test database so the
+> suite stops wiping dev, then a re-run of the load test against the real stores so the performance
+> slide has numbers again."
+
+**11. "How do I run this?"**
+> "`./run.sh`. It checks podman and uv, installs uv if missing, generates `.env`, starts six
+> containers, seeds the data, and polls `/health` before it claims success. `./run.sh --with-tests`
+> adds the suite. `./stop.sh` stops it and prints proof that every port is closed."
+
+**12. "What is the biggest weakness?"**
+> "One host. No failover, no backup, no ops story — everything else on the honest list is a
+> consequence of that. It is a laboratory, and it says so on the slide."
+
+**13. (If asked something you do not know)**
+> "I do not know — it is not measured yet. That is the answer this project is designed to give."
+
+---
+
+## 6. Lines worth memorising (they do the work)
+
+- "Everyone can show you the happy path. Ours shows you the failure path."
+- "The fallback was convenient, and it never showed up in the demo."
+- "Refusing is the feature."
+- "We would rather be caught being wrong than be believed falsely."
+- "The shared thing lives in the store, not in the process."
+- "A graph you cannot reproduce is a story, not a measurement."
+- "A demo you cannot re-run is a story."
+- "The difference is not the stack. It is deciding on day one that the failure path is the product."
+
+---
+
+## 7. One-page card (print this, hold it)
+
+```
+0:00  happy path vs failure path
+0:25  three lies: limiter / shards / cache
+1:20  architecture: 3 real stores + startup guard
+2:20  DEMO A  podman stop sis-redis -> 503 -> start -> 200
+3:40  DEMO B  route/DEMO-KEY-1 -> agrees:false
+4:10  DEMO C  move-chunk -> moved_bounds
+4:40  5 seats x 20 requests -> 5x201 15x409
+5:20  one bucket, two workers | 1000 ids | crawl refetched 0
+6:40  honest limits (single host, volatile redis, stale load test)
+7:50  ./run.sh  ./stop.sh
+8:20  "A demo you cannot re-run is a story."  STOP TALKING
+```

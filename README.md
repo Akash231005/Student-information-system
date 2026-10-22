@@ -189,6 +189,25 @@ demonstration data — no real student records.
 
 ## Quick start
 
+### One command
+
+```bash
+./run.sh          # check the machine, start 6 containers, seed the data, start the API
+./stop.sh         # stop this project's API and containers, then prove nothing is left running
+```
+
+`run.sh` verifies Podman and `uv` (installing `uv` in user space if it is missing), generates
+`sis-app/.env` with a fresh token secret on first run, starts PostgreSQL, Redis and a real MongoDB
+sharded cluster, seeds the demo dataset, and polls `/health` before it reports success. Add
+`--with-tests` to run the suite first (it drops and recreates tables, so it must run before seeding)
+and `--verify` for the measured evidence from `scripts/verify_stack.py`. Both commands are
+idempotent; `stop.sh` stops containers and never removes them, so data survives.
+
+Windows: `run.bat` / `stop.bat` mirror this with Docker Desktop, but are **untested** — no Windows
+host was available.
+
+### Or by hand
+
 Requires Python 3.11+, [`uv`](https://docs.astral.sh/uv/), Node 20+, and Podman or a PostgreSQL 17 server.
 
 ```bash
