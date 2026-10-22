@@ -1,27 +1,51 @@
 digraph G {
- graph [rankdir=LR, bgcolor="white", pad="0.28", nodesep="0.45", ranksep="0.68", splines=ortho, fontname="DejaVu Sans", fontsize=18, labelloc=t, label="ORBIT SIS  |  RUNTIME ARCHITECTURE\n", compound=true];
+ graph [rankdir=LR, bgcolor="white", pad="0.3", nodesep="0.4", ranksep="0.7", splines=spline, fontname="DejaVu Sans", fontsize=18, labelloc=t, label="ORBIT SIS  |  RUNTIME ARCHITECTURE  ·  real Redis and MongoDB, no in-memory fallback\n", compound=true];
  node [shape=box, style="rounded,filled", color="#CBD5DF", fillcolor="#F7F9FC", fontname="DejaVu Sans", fontsize=11, fontcolor="#15283B", margin="0.18,0.13", penwidth=1.2];
  edge [fontname="DejaVu Sans", fontsize=9, color="#526A80", fontcolor="#3C5368", arrowsize=.75, penwidth=1.35];
+
  subgraph cluster_clients { label="CLIENTS & WORKLOADS"; color="#D7E0E8"; style="rounded"; penwidth=1.2;
   student [label="Student / faculty\nbrowser", fillcolor="#EAF2FF", color="#8AAFE6"];
   locust [label="Locust load\nworkloads", fillcolor="#F2F4F7"];
  }
- subgraph cluster_app { label="APPLICATION BOUNDARY  ·  FASTAPI MODULAR MONOLITH"; color="#9CCFC8"; style="rounded"; penwidth=1.5;
-  api [label="HTTP API\nFastAPI", fillcolor="#DDF4EF", color="#5DAFA3", penwidth=1.6];
+
+ subgraph cluster_app { label="APPLICATION BOUNDARY  ·  FASTAPI MODULAR MONOLITH  ·  two worker processes"; color="#9CCFC8"; style="rounded"; penwidth=1.5;
+  api [label="HTTP API\nFastAPI  ·  :8000", fillcolor="#DDF4EF", color="#5DAFA3", penwidth=1.6];
   auth [label="Authentication · role checks\nrequest validation", fillcolor="#F1FAF8", color="#9CCFC8"];
   domain [label="Academic workflows\ncourses · offerings · enrollment\ngrades · attendance · timetable", fillcolor="#F1FAF8", color="#9CCFC8"];
-  aux [label="Process-local experiments\nTTL/LRU cache · token bucket\nhash ring · in-memory telemetry", fillcolor="#FFF4E8", color="#E4B77C"];
+  experiments [label="Shared-state experiments\nrate limit · autocomplete cache\nID generation · sharded records\nresumable crawl", fillcolor="#FFF4E8", color="#E4B77C"];
   api -> auth [label="validate / authorize"];
   auth -> domain [label="allowed request"];
-  api -> aux [style=dashed, label="experimental routes"];
+  api -> experiments [style=dashed, label="experimental routes"];
  }
- subgraph cluster_data { label="PERSISTENCE BOUNDARY"; color="#A8B8C8"; style="rounded"; penwidth=1.2;
-  pg [label="PostgreSQL\nauthoritative academic state\nconstraints + transactions", fillcolor="#E7EEF5", color="#6888A5", penwidth=1.7];
+
+ subgraph cluster_redis { label="REDIS 7  ·  :6379"; color="#E0A0A0"; style="rounded"; penwidth=1.4;
+  buckets [label="Token buckets\none Lua read-modify-write\n(shared allowance per key)", fillcolor="#FDECEC", color="#D08A8A"];
+  ttl [label="Autocomplete TTL cache\nexpires in place", fillcolor="#FDECEC", color="#D08A8A"];
+  slots [label="ID worker slots\ncounter → slot 1 or 2\n1000 unique IDs measured", fillcolor="#FDECEC", color="#D08A8A"];
  }
+
+ subgraph cluster_mongo { label="MONGODB 7  ·  SHARDED CLUSTER"; color="#A8B8C8"; style="rounded"; penwidth=1.4;
+  mongos [label="mongos router\n:27017", fillcolor="#E7EEF5", color="#6888A5", penwidth=1.6];
+  cfg [label="config server replica set\nchunk metadata  ·  :27019", fillcolor="#F3F6FA", color="#93A8BB"];
+  shard_a [label="shard A replica set\n:27021", fillcolor="#E7EEF5", color="#6888A5"];
+  shard_b [label="shard B replica set\n:27022", fillcolor="#E7EEF5", color="#6888A5"];
+  frontier [label="Durable crawl frontier\nvisited URLs · resume state\n(collection)", fillcolor="#F3F6FA", color="#93A8BB"];
+  mongos -> cfg [style=dotted, label="metadata", arrowhead=none, color="#93A8BB"];
+  mongos -> shard_a [label="hashed _id"];
+  mongos -> shard_b [label="hashed _id"];
+ }
+
+ pg [label="PostgreSQL\nauthoritative academic state\nconstraints + transactions", fillcolor="#E7EEF5", color="#6888A5", penwidth=1.7];
+
  student -> api [label="HTTPS / JSON"];
  locust -> api [label="HTTP workload"];
  domain -> pg [label="SQLAlchemy / SQL transaction", color="#087E78", fontcolor="#087E78", penwidth=1.8];
- aux -> pg [style=dashed, label="only persisted features\n(e.g. short links)"];
- note [shape=note, label="Correctness rule\nSeat counter + enrollment row\ncommit or roll back together", fillcolor="#FFF9E9", color="#D8B96E", fontsize=10];
- {rank=same; pg; note;} pg -> note [style=dotted, arrowhead=none, color="#B49A4D"];
+ experiments -> buckets [label="atomic decrement"];
+ experiments -> ttl [label="GET / SETEX"];
+ experiments -> slots [label="INCR"];
+ experiments -> mongos [label="hashed shard writes"];
+ experiments -> frontier [label="push / pop next URL", style=dashed];
+
+ guard [shape=note, label="Startup guard\nRedis or MongoDB unreachable →\nthe app refuses to start (RuntimeError).\nNo dictionary stands in for either service.\nData routes answer 503 if a store drops later.", fillcolor="#FFF9E9", color="#D8B96E", fontsize=10];
+ pg -> guard [style=dotted, arrowhead=none, color="#B49A4D"];
 }

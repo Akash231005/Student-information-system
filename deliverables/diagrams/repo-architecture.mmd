@@ -1,0 +1,83 @@
+%% GitDiagram (gitdiagram.com) architecture of the repository, generated 2026-10-22
+%% from the file tree, README and a sample of source files. Mermaid source of record;
+%% rendered copy: repo-architecture.svg. Regenerate on gitdiagram.com if the layout changes.
+flowchart TD
+
+subgraph group_client["User interface"]
+  node_frontend["SIS workspace<br/>[App.tsx]"]
+end
+
+subgraph group_api["API and identity"]
+  node_apiapp["FastAPI routes<br/>[main.py]"]
+  node_identity["Authentication<br/>[auth.py]"]
+  node_schemas["Request schemas<br/>[schemas.py]"]
+end
+
+subgraph group_academic["Academic records"]
+  node_academic_ext["Academic extensions<br/>[extended.py]"]
+  node_models["Academic models<br/>[models.py]"]
+end
+
+subgraph group_experiments["System experiments"]
+  node_experiments["Rate limit, cache, IDs<br/>[components.py]"]
+  node_autocomplete["Course autocomplete<br/>[extended.py]"]
+  node_sharding["Shard routing<br/>[shardstore.py]"]
+  node_crawler["Web crawler<br/>[crawler.py]"]
+  node_frontier[("Durable crawl frontier<br/>[crawlstore.py]")]
+end
+
+subgraph group_stores["State stores"]
+  node_postgres[("PostgreSQL")]
+  node_mongodb[("MongoDB cluster")]
+  node_redis[("Redis")]
+  node_infra["Store clients<br/>[infra.py]"]
+end
+
+node_users(("Students and staff"))
+
+node_users -->|"use"| node_frontend
+node_frontend -->|"calls API"| node_apiapp
+node_apiapp -->|"auth routes"| node_identity
+node_apiapp -->|"mounts routes"| node_academic_ext
+node_apiapp -->|"queries records"| node_models
+node_apiapp -.->|"validates payloads"| node_schemas
+node_identity -->|"loads accounts"| node_models
+node_models -->|"persists records"| node_postgres
+node_academic_ext -->|"queries records"| node_models
+node_academic_ext -->|"uses components"| node_experiments
+node_academic_ext -->|"serves prefix search"| node_autocomplete
+node_autocomplete -->|"reads and caches"| node_redis
+node_academic_ext -->|"dispatches records"| node_sharding
+node_sharding -->|"routes shard data"| node_mongodb
+node_academic_ext -->|"invokes crawl"| node_crawler
+node_crawler -->|"stores frontier"| node_frontier
+node_frontier -->|"persists frontier"| node_mongodb
+node_infra -->|"connects"| node_redis
+node_infra -->|"connects"| node_mongodb
+node_experiments -->|"uses shared state"| node_redis
+
+click node_frontend "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/frontend/src/App.tsx"
+click node_apiapp "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/app/main.py"
+click node_identity "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/app/auth.py"
+click node_schemas "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/app/schemas.py"
+click node_academic_ext "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/app/extended.py"
+click node_models "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/app/models.py"
+click node_experiments "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/app/components.py"
+click node_autocomplete "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/app/extended.py"
+click node_sharding "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/app/shardstore.py"
+click node_crawler "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/app/crawler.py"
+click node_frontier "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/app/crawlstore.py"
+click node_infra "https://github.com/sujith0613/sis-system-design/blob/main/sis-app/app/infra.py"
+
+classDef toneNeutral fill:#f8fafc,stroke:#334155,stroke-width:1.5px,color:#0f172a
+classDef toneBlue fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#172554
+classDef toneAmber fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
+classDef toneMint fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d
+classDef toneRose fill:#ffe4e6,stroke:#e11d48,stroke-width:1.5px,color:#881337
+classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81
+classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
+class node_frontend toneBlue
+class node_apiapp,node_identity,node_schemas toneAmber
+class node_academic_ext,node_models toneMint
+class node_experiments,node_autocomplete,node_sharding,node_crawler,node_frontier toneRose
+class node_postgres,node_mongodb,node_redis,node_infra,node_users toneIndigo
