@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
 
+import redis
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pymongo.errors import PyMongoError
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -46,6 +48,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(extended_router)
+
+
+# A dropped store is a dependency failure, not a code bug: name the store and answer 503,
+# so an outage is readable instead of surfacing as an unexplained 500.
+@app.exception_handler(redis.exceptions.RedisError)
+@app.exception_handler(PyMongoError)
+async def store_unavailable(request: Request, exc: Exception) -> JSONResponse:
+    if isinstance(exc, redis.exceptions.RedisError):
+        store = "redis"
+        detail = (
+            "Redis is unavailable: shared rate limiting, the autocomplete cache and ID "
+            "allocation all live there."
+        )
+    else:
+        store = "mongodb"
+        detail = (
+            "The mongos router is unavailable: sharded records and the crawl frontier are "
+            "behind it."
+        )
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"status": "degraded", "store": store, "detail": detail},
+    )
 
 
 @app.get("/health")
@@ -257,17 +282,35 @@ async def apply_api_rate_limit(request: Request, call_next):
     if (
         RATE_LIMIT_ENABLED
         and request.url.path not in {"/health", "/openapi.json", "/docs", "/redoc"}
-        and not api_limiter.allow(f"{client}:{group}")
     ):
-        http_metrics["requests"] += 1
-        http_metrics["errors"] += 1
-        http_metrics["rate_limited"] += 1
-        rate_limit_metrics["rejections"] += 1
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "Rate limit exceeded"},
-            headers={"Retry-After": "1"},
-        )
+        try:
+            allowed = api_limiter.allow(f"{client}:{group}")
+        except redis.exceptions.RedisError:
+            # No store, no honest decision: refusing is the only answer that keeps the
+            # limit real. Serving anyway would silently disable it.
+            http_metrics["requests"] += 1
+            http_metrics["errors"] += 1
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={
+                    "status": "degraded",
+                    "store": "redis",
+                    "detail": (
+                        "Redis is unavailable, so the shared rate limiter cannot decide. "
+                        "Serving the request anyway would silently disable the limit."
+                    ),
+                },
+            )
+        if not allowed:
+            http_metrics["requests"] += 1
+            http_metrics["errors"] += 1
+            http_metrics["rate_limited"] += 1
+            rate_limit_metrics["rejections"] += 1
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded"},
+                headers={"Retry-After": "1"},
+            )
     response = await call_next(request)
     elapsed = (time.perf_counter() - started) * 1000
     http_metrics["requests"] += 1
