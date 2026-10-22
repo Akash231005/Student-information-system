@@ -65,7 +65,7 @@ increment.
 ## Architecture
 
 <div align="center">
-<img src="deliverables/diagrams/architecture.svg" alt="System architecture" width="760">
+<a href="deliverables/diagrams/architecture.svg"><img src="deliverables/diagrams/architecture.svg" alt="System architecture" width="100%"></a>
 </div>
 
 The view above is the runtime topology as it actually runs: one `mongos` in front of a config-server replica

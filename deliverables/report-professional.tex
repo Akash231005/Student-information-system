@@ -123,9 +123,9 @@ The verification covers a local prototype and synthetic records. It does not cer
 \section{Runtime architecture}
 The React interface presents student and faculty workflows. FastAPI exposes HTTP endpoints and applies validation and access checks. SQLAlchemy connects the API to PostgreSQL, which stores student profiles, courses, offerings, enrollments, and academic records. The database is the source of truth for seat capacity and enrollment state. The transaction and locking model follows PostgreSQL's documented concurrency mechanisms [3, 4].
 
-\begin{figure}[htbp]
+\begin{figure}[p]
 \centering
-\includegraphics[width=\linewidth]{diagrams/architecture.pdf}
+\rotatebox{90}{\includegraphics[width=0.92\textheight]{diagrams/architecture.pdf}}
 \caption[Runtime architecture]{Runtime architecture and trust boundaries. Solid edges show primary request/data paths; dashed edges indicate experimental or auxiliary paths.}
 \label{fig:architecture}
 \end{figure}
